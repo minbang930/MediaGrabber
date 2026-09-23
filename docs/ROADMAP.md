@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/filter-image-hls`: image-only HLS should disappear while the real MSE candidate remains visible and playback stays normal.
-- Test the surfaced MSE candidate for full-video download.
-- If MSE download is partial, replace the current multiple-independent-input assembly with an ordered reconstruction/mux strategy based on the confirmed fragment format.
+- Build and real-site validate `fix/mse-append-capture`, including normal pre-download playback, capture-start reload behavior, full-length audio/video output, cancellation, and temp-file cleanup.
+- Keep the append-capture PR draft until the branch CoApp and extension are tested together; the installed release CoApp lacks the new capture RPC.
+- If the capture output is valid, add deterministic coverage for chunk ordering/session validation and then merge the MSE reconstruction path.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
