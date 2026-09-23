@@ -140,7 +140,7 @@ Confirmed interpretation:
 
 Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excluded from user-facing A/V candidates when every parsed segment has an image extension. Master HLS and ordinary audio/video HLS are unaffected.
 
-Status: implementation complete; real-site validation pending.
+Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
 ## Candidate reconstruction issue
 
