@@ -6,8 +6,8 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 - Validate the minimized MAIN-world XHR hook on the problematic player without removing MSE detection.
 - Confirm playback first; if it still fails, isolate the remaining fetch/MediaSource/SourceBuffer hooks one layer at a time.
-- Identify the transport behind the many fragment-like detections seen when the hook is disabled.
-- Make MSE/full-stream reconstruction reliable for that transport.
+- Validate the DOM source-noise fix; expected result is that the 12 extensionless `<source>` entries and the blob direct entry disappear while playback remains normal.
+- Then validate download behavior of the remaining HLS/MSE candidate and make full-stream reconstruction reliable for the confirmed transport.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
