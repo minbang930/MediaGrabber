@@ -142,6 +142,27 @@ Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excl
 
 Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
+## 2026-09-24 — Raw XHR source is nonstandard; check DRM boundary before append capture
+
+Closed PR #20 result:
+
+- 30 XHR ArrayBuffer responses observed;
+- all 30 classified as `other` rather than MPEG-TS, MP4, WebM/EBML, FLV, ADTS, ID3, or image;
+- the player later produces separate audio/video fMP4 appends.
+
+Interpretation: reusing the raw XHR response as a standard FFmpeg media segment is not supported by current evidence. The useful standardized media appears only after player-side transformation.
+
+Before considering post-transform MSE capture, project scope requires ruling out EME/CENC-protected media.
+
+Follow-up branch `diag/mse-drm-boundary`:
+
+- listens for `encrypted` media events and records only count plus initDataType strings;
+- scans only the first append per SourceBuffer for CENC-related box/scheme markers such as `pssh`, `sinf`, `schm`, `tenc`, `encv`, `enca`, `cenc`, and `cbcs`;
+- also records clear codec markers (`avc1`, `hvc1`, `av01`, `vp09`, `mp4a`, etc.) for context;
+- never records initData bytes, key IDs, keys, URLs, headers, or media payloads.
+
+If EME/CENC indicators are present, the stream is classified outside MediaGrabber's DRM-circumvention scope. If absent, the next architecture experiment may capture already-clear fMP4 appends only on explicit user download.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
