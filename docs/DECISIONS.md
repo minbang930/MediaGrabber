@@ -36,6 +36,20 @@ Alternatives considered:
 
 Consequence: the next implementation should first reduce XHR/fetch/MSE hook invasiveness and validate playback before changing reconstruction logic.
 
+## 2026-09-24 — Keep HLS extension relaxation protocol-scoped
+
+Decision: if MediaGrabber disables FFmpeg HLS extension matching for compatibility with extensionless or nonstandard segment URLs, it must do so only on HLS inputs and pair that relaxation with an explicit protocol whitelist.
+
+Context: a tested stream is parsed by the extension as a 1118-segment HLS media playlist but FFmpeg returns `invalid-data`. Newer FFmpeg HLS handling tightened segment-extension validation, so the current compatibility experiment uses `-extension_picky 0` for HLS only.
+
+Security consequence:
+
+- remote HLS inputs allow only `http,https,tcp,tls,crypto,data`;
+- rewritten temporary local manifests additionally allow `file` because the CoApp itself creates that local manifest;
+- the extension relaxation must not be applied globally to unrelated FFmpeg inputs.
+
+Status: this scoping is a confirmed design decision; whether it resolves the tested site remains pending real-site validation.
+
 ## Inherited architecture decisions
 
 The current codebase already embodies these upstream choices:
