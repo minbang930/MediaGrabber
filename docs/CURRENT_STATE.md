@@ -112,5 +112,6 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - Revalidation progressed into the CoApp spool and exposed a confirmed sparse-array completeness bug: an incomplete multi-chunk fragment could be flushed with `undefined` holes. The CoApp now uses explicit `receivedCount` tracking and indexed completeness checks.
 - User validation after the native spool fix succeeded end-to-end: reload, manual playback, sustained capture, final mux, and creation of a playable downloaded file all completed successfully.
 - Current UX limitation: this transport captures only media fragments the player actually appends, so complete capture presently requires the player to load the whole timeline—most reliably by playing from the beginning to the end.
+- Experiment branch `exp/mse-playback-rate-acceleration` tests the least invasive acceleration candidate: request 8× playback only during an explicit capture, preserve chronological playback, report the effective rate, and restore the original rate afterward.
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
