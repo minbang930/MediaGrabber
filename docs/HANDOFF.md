@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 fixed the player regression. PR #6 merged as `2bfc0884d8380fd31f9ed97310da3de39f5f0b45` and reduced the popup from 14 entries to 1. PR #8 removes the prior terminal `invalid-data` but FFmpeg still produces no stream. PR #9 identified HLS v6 + AES-128/identity + 1118 nonstandard-extension segments. PR #10 observed 36 successful browser segment responses. Branch `diag/hls-request-context` now checks only which conditional request headers are present on those browser segment/key requests.
+PR #3 fixed the player regression. PR #6 merged as `2bfc0884d8380fd31f9ed97310da3de39f5f0b45` and reduced the popup from 14 entries to 1. PR #8 removes the prior terminal `invalid-data` but FFmpeg still produces no stream. PR #9 identified HLS v6 + AES-128/identity + 1118 nonstandard-extension segments. PR #10 observed 36 successful browser segment responses. Draft PR #11 (`diag/hls-request-context`) now checks only which conditional request headers are present on those browser segment/key requests.
 
 A separate direct-download test currently fails with HTTP 404.
 
