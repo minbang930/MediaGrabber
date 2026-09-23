@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/filter-image-hls`: image-only HLS should disappear while the real MSE candidate remains visible and playback stays normal.
-- Test the surfaced MSE candidate for full-video download.
-- If MSE download is partial, replace the current multiple-independent-input assembly with an ordered reconstruction/mux strategy based on the confirmed fragment format.
+- Check EME/CENC indicators on the transformed MSE fMP4 path before any append-byte capture work.
+- If protected-media indicators are present, classify the candidate unsupported; if absent, design explicit user-triggered post-transform fMP4 capture with bounded memory and no player-visible mutation.
+- After reliable per-buffer fMP4 acquisition exists, implement ordered track reconstruction and audio/video muxing.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
