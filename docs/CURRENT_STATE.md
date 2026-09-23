@@ -113,5 +113,6 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - User validation after the native spool fix succeeded end-to-end: reload, manual playback, sustained capture, final mux, and creation of a playable downloaded file all completed successfully.
 - Current UX limitation: this transport captures only media fragments the player actually appends, so complete capture presently requires the player to load the whole timeline—most reliably by playing from the beginning to the end.
 - PR #23 playback-rate acceleration passed real-site validation and has been merged into PR #22's branch. The unique-playing-video fallback successfully selected the player when exact blob matching was unavailable.
+- User validation of Cancel during accelerated capture also passed: capture stopped immediately, the player remained usable, and playback rate returned to normal.
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
