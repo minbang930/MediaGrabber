@@ -106,7 +106,8 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - PR #21 observed no EME `encrypted` event, initData, or CENC markers on the tested path (`eme=0`, `drm=none`). This supports treating this specific path as clear/non-DRM while retaining runtime protection guards.
 - Draft PR #22 replaces the broken blob/URL FFmpeg path with explicit user-triggered post-transform MSE capture: reload once, capture per-SourceBuffer fragments to native temporary files, then mux the first video/audio tracks with FFmpeg.
 - First real-site validation confirmed capture arming and the one-time reload, but playback-to-end did not finalize into an output file. The same run exposed a confirmed cross-tab popup broadcast bug.
-- PR #22 follow-up now scopes popup media updates to the selected tab, suppresses media refresh during active downloads, tracks completion against the actual captured MediaSource, and reports captured bytes/fragments for the next validation.
-- Does the revised capture path reach the finalizing/mux phase and produce a complete synchronized output on the tested player?
+- User validation confirmed the popup tab-scoping fix: media from other tabs no longer appears during capture. The capture still remained in a generic armed/downloading state after manual playback, so the exact stall point was not observable.
+- PR #22 now persists explicit capture lifecycle phases (`reload`, `frame-ready`, `hook-armed`, `first-fragment`, `capture`, `finalizing`) across popup reopen and reports the MAIN-world start acknowledgement to background.
+- Which lifecycle phase is the last one reached on the tested player, and does the revised capture path proceed to finalization/mux?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
