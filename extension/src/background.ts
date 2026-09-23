@@ -28,6 +28,25 @@ const currentPageUrlByTab = new Map<number, string | null>();
 const relayMappingsByTab = new Map<number, Map<string, string>>();
 const relayCodecsByTab = new Map<number, Map<string, RelayCodec>>();
 
+type HlsDiagnosticTargetKind = 'segment' | 'key';
+
+interface HlsRequestPresence {
+  seen: number;
+  cookie: number;
+  authorization: number;
+  range: number;
+  referer: number;
+  origin: number;
+}
+
+interface HlsRequestContextSummary {
+  segment: HlsRequestPresence;
+  key: HlsRequestPresence;
+}
+
+const hlsDiagnosticTargetHashesByTab = new Map<number, Map<string, HlsDiagnosticTargetKind>>();
+const hlsRequestContextByTab = new Map<number, HlsRequestContextSummary>();
+
 interface RelayCodec {
   hour: number;
   prefix: string;
@@ -49,6 +68,8 @@ function resetTabState(tabId: number): void {
   ytdlpFormatUrlByTab.delete(tabId);
   relayMappingsByTab.delete(tabId);
   relayCodecsByTab.delete(tabId);
+  hlsDiagnosticTargetHashesByTab.delete(tabId);
+  hlsRequestContextByTab.delete(tabId);
   chrome.action.setBadgeText({ tabId, text: '' }, () => { void chrome.runtime.lastError; });
 }
 
@@ -281,6 +302,127 @@ chrome.runtime.onStartup.addListener(() => {
 });
 
 // --- Media detection via webRequest (works in MV3 service worker) ---
+
+function hashDiagnosticUrl(url: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < url.length; i += 1) {
+    hash ^= url.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${(hash >>> 0).toString(16)}:${url.length}`;
+}
+
+function createHlsRequestPresence(): HlsRequestPresence {
+  return {
+    seen: 0,
+    cookie: 0,
+    authorization: 0,
+    range: 0,
+    referer: 0,
+    origin: 0
+  };
+}
+
+function headerNames(headers?: chrome.webRequest.HttpHeader[]): Set<string> {
+  return new Set((headers || []).map(header => header.name.toLowerCase()));
+}
+
+function observeHlsRequestContext(details: chrome.webRequest.WebRequestHeadersDetails): void {
+  if (details.tabId < 0) return;
+  const targetKind = hlsDiagnosticTargetHashesByTab.get(details.tabId)?.get(hashDiagnosticUrl(details.url));
+  if (!targetKind) return;
+
+  let summary = hlsRequestContextByTab.get(details.tabId);
+  if (!summary) {
+    summary = {
+      segment: createHlsRequestPresence(),
+      key: createHlsRequestPresence()
+    };
+    hlsRequestContextByTab.set(details.tabId, summary);
+  }
+
+  const names = headerNames(details.requestHeaders);
+  const bucket = summary[targetKind];
+  bucket.seen += 1;
+  if (names.has('cookie')) bucket.cookie += 1;
+  if (names.has('authorization')) bucket.authorization += 1;
+  if (names.has('range')) bucket.range += 1;
+  if (names.has('referer')) bucket.referer += 1;
+  if (names.has('origin')) bucket.origin += 1;
+}
+
+function registerHlsRequestContextTargets(
+  tabId: number,
+  manifestUrl: string,
+  parsed: Awaited<ReturnType<typeof M3U8ParserWrapper.fetchAndParse>>
+): void {
+  const targets = hlsDiagnosticTargetHashesByTab.get(tabId) || new Map<string, HlsDiagnosticTargetKind>();
+
+  for (const segmentUrl of (parsed.segments || []).slice(0, 256)) {
+    targets.set(hashDiagnosticUrl(segmentUrl), 'segment');
+  }
+
+  if (parsed.manifest) {
+    const baseUrl = parsed.manifestUrl || manifestUrl;
+    let keyCount = 0;
+    for (const line of parsed.manifest.split(/\r?\n/)) {
+      if (!line.trim().startsWith('#EXT-X-KEY:')) continue;
+      const keyUri = line.match(/URI="([^"]+)"/i)?.[1];
+      if (!keyUri) continue;
+      try {
+        const resolved = new URL(keyUri, baseUrl);
+        if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') continue;
+        targets.set(hashDiagnosticUrl(resolved.href), 'key');
+        keyCount += 1;
+        if (keyCount >= 16) break;
+      } catch {
+        // Ignore malformed diagnostic-only key URLs.
+      }
+    }
+  }
+
+  hlsDiagnosticTargetHashesByTab.set(tabId, targets);
+  if (!hlsRequestContextByTab.has(tabId)) {
+    hlsRequestContextByTab.set(tabId, {
+      segment: createHlsRequestPresence(),
+      key: createHlsRequestPresence()
+    });
+  }
+}
+
+function formatPresence(label: string, present: number, seen: number): string {
+  return `${label}=${present}/${seen}`;
+}
+
+function formatHlsRequestContext(tabId: number): string {
+  const summary = hlsRequestContextByTab.get(tabId);
+  if (!summary) return 'segmentSeen=0 keySeen=0';
+
+  const s = summary.segment;
+  const k = summary.key;
+  return [
+    `segmentSeen=${s.seen}`,
+    formatPresence('cookie', s.cookie, s.seen),
+    formatPresence('auth', s.authorization, s.seen),
+    formatPresence('range', s.range, s.seen),
+    formatPresence('referer', s.referer, s.seen),
+    formatPresence('origin', s.origin, s.seen),
+    `keySeen=${k.seen}`,
+    formatPresence('keyCookie', k.cookie, k.seen),
+    formatPresence('keyAuth', k.authorization, k.seen),
+    formatPresence('keyRange', k.range, k.seen),
+    formatPresence('keyReferer', k.referer, k.seen),
+    formatPresence('keyOrigin', k.origin, k.seen)
+  ].join(' ');
+}
+
+chrome.webRequest.onBeforeSendHeaders.addListener(
+  (details) => {
+    observeHlsRequestContext(details);
+  },
+  { urls: ['<all_urls>'] },
+  ['requestHeaders', 'extraHeaders']
+);
 
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
@@ -542,6 +684,7 @@ async function handleInterceptedMedia(
   if (type === 'hls') {
     try {
       const parsed = await M3U8ParserWrapper.fetchAndParse(url, referer);
+      registerHlsRequestContextTargets(tabId, url, parsed);
       duration = parsed.duration;
       childUrls = parsed.childUrls;
 
@@ -956,7 +1099,11 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       } else {
         notify('Download failed', outFilename);
         popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: formatFfmpegError(result.exitCode, result.stderr) });
+          const baseError = formatFfmpegError(result.exitCode, result.stderr);
+          const error = type === 'hls'
+            ? `${baseError}\nBrowser HLS request context: ${formatHlsRequestContext(tabId ?? -1)}`
+            : baseError;
+          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error });
         });
       }
       activeDownloads.delete(downloadKey);
