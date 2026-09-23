@@ -4,7 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Diagnose the separate direct-download HTTP 404 and determine whether URL freshness/provenance or a minimal non-sensitive request context is required.
+- Validate `fix/lazy-mse-main-hook`: remove global MAIN-world instrumentation from ordinary browsing while preserving explicit MSE capture.
+- Re-test Cloudflare challenge behavior, `databento.com`, YouTube thumbnail loading, and the validated transformed-XHR MSE workflow before merge.
+- Diagnose the separate direct-download HTTP 404 and determine whether URL freshness/provenance or a minimal non-sensitive request context is required after the browser-compatibility regression is resolved.
 - If request context is proven necessary, design and validate the narrowest safe propagation path; do not copy cookies/auth or broad browser context by default.
 - Keep the validated 8× chronological playback-rate strategy for MSE capture; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
 
