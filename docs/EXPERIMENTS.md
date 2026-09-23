@@ -371,6 +371,44 @@ Manual filesystem validation after the accelerated-capture Cancel test:
 - no native MSE capture temporary directory remained after cancellation.
 
 Together with the successful-completion cleanup path already exercised during end-to-end download validation, this closes the manual temporary-spool cleanup acceptance for the tested workflow.
+## 2026-09-24 — Candidate: detached active-window MSE capture
+
+Problem:
+
+- the validated MSE append-capture path completes only while the tested player's tab remains foreground/visible;
+- switching to another tab in the same window can stop the player from advancing, so no new SourceBuffer fragments reach MediaGrabber.
+
+Candidate approach on `exp/mse-detached-capture-window`:
+
+- do not spoof `document.visibilityState` or intercept page visibility events;
+- when an explicit MSE Download begins, move the existing capture tab into its own normal browser window;
+- keep that tab as the only/active tab in the non-minimized capture window;
+- reload and arm the existing capture workflow unchanged;
+- after the user presses Play and the first real MSE fragment arrives, return focus to the original browser window automatically;
+- leave the capture window open and non-minimized so its active tab can remain visible while the user works in the original window;
+- on success, cancellation, or error, move the capture tab back to its original window/index where possible;
+- preserve the previously active tab in the original window when restoring;
+- if the source window originally contained only the capture tab, create a temporary new-tab placeholder so moving the capture tab does not close the user's original window; remove that placeholder only if it remains untouched.
+
+Why this is preferred before visibility spoofing:
+
+- Chrome can move an existing tab into a newly created window using `chrome.windows.create({ tabId })`;
+- Page Visibility treats a foreground tab in a non-minimized window as visible, while switching focus between windows does not inherently make the page hidden;
+- the site's player sees normal browser visibility semantics rather than synthetic property/event overrides;
+- the existing tab ID, page state, capture session, and MSE frame identity remain intact.
+
+Open question:
+
+- whether this tested player pauses on window blur/focus rather than Page Visibility. Real-site validation is required.
+
+Manual acceptance:
+
+- Download moves the current tab into a dedicated capture window and reloads once;
+- manual Play starts accelerated capture normally;
+- after the first captured fragment, focus returns to the original window;
+- the user can browse other tabs in the original window while capture bytes/fragments continue and the output completes normally;
+- the dedicated capture window must remain open and non-minimized;
+- success/cancel restores the capture tab and preserves normal playback/rate behavior.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
