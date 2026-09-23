@@ -47,6 +47,8 @@
   let capturePipOwned = false;
   let capturePipRequestInFlight = false;
   let capturePipPermanentFailure = false;
+  let capturePipHelperVideo: HTMLVideoElement | null = null;
+  let capturePipHelperStream: MediaStream | null = null;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -97,24 +99,75 @@
     });
   }
 
-  function findCapturePipTarget(): HTMLVideoElement | undefined {
-    if (acceleratedMediaElement instanceof HTMLVideoElement) {
-      return acceleratedMediaElement;
+  function prepareCapturePipHelper(): void {
+    if (capturePipHelperVideo || capturePipPermanentFailure) return;
+
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 40;
+      const context = canvas.getContext('2d');
+      if (!context) {
+        capturePipPermanentFailure = true;
+        postCapturePipState('failed', 'helper-canvas-unavailable');
+        return;
+      }
+
+      context.fillStyle = '#000';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      const captureStream = (canvas as HTMLCanvasElement & {
+        captureStream?: (frameRate?: number) => MediaStream;
+      }).captureStream;
+      if (typeof captureStream !== 'function') {
+        capturePipPermanentFailure = true;
+        postCapturePipState('unsupported', 'helper-capture-stream-unavailable');
+        return;
+      }
+
+      const stream = captureStream.call(canvas, 1);
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.autoplay = true;
+      video.setAttribute('aria-hidden', 'true');
+      video.dataset.mediagrabberPipHelper = '1';
+      video.style.position = 'fixed';
+      video.style.left = '-10000px';
+      video.style.top = '-10000px';
+      video.style.width = '1px';
+      video.style.height = '1px';
+      video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
+      video.srcObject = stream;
+
+      (document.documentElement || document.body)?.appendChild(video);
+      capturePipHelperStream = stream;
+      capturePipHelperVideo = video;
+
+      try {
+        const track = stream.getVideoTracks()[0] as MediaStreamTrack & {
+          requestFrame?: () => void;
+        };
+        track?.requestFrame?.();
+      } catch {}
+
+      void video.play().catch(() => {
+        // The user's later Play click can still provide activation for PiP.
+      });
+    } catch (error: any) {
+      capturePipPermanentFailure = true;
+      postCapturePipState('failed', String(error?.name || 'helper-create-failed'));
     }
+  }
 
-    const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('video'))
-      .filter((video) =>
-        video.readyState > 0 &&
-        !video.disablePictureInPicture
-      );
-
-    const captured = videos.find((video) => isCapturedMediaElement(video));
-    if (captured) return captured;
-
-    const playing = videos.filter((video) => !video.paused && !video.ended);
-    if (playing.length === 1) return playing[0];
-
-    return videos.length === 1 ? videos[0] : undefined;
+  function getCapturePipHelper(): HTMLVideoElement | undefined {
+    prepareCapturePipHelper();
+    const video = capturePipHelperVideo;
+    if (!video || video.readyState === 0 || video.disablePictureInPicture) {
+      return undefined;
+    }
+    return video;
   }
 
   function restoreCapturePictureInPicture(): void {
@@ -122,8 +175,12 @@
     capturePipPermanentFailure = false;
     const element = capturePipElement;
     const owned = capturePipOwned;
+    const helperVideo = capturePipHelperVideo;
+    const helperStream = capturePipHelperStream;
     capturePipElement = null;
     capturePipOwned = false;
+    capturePipHelperVideo = null;
+    capturePipHelperStream = null;
 
     if (
       owned &&
@@ -134,6 +191,17 @@
         void document.exitPictureInPicture().catch(() => {});
       } catch {}
     }
+
+    try {
+      helperStream?.getTracks().forEach((track) => track.stop());
+    } catch {}
+    try {
+      if (helperVideo) {
+        helperVideo.pause();
+        helperVideo.srcObject = null;
+        helperVideo.remove();
+      }
+    } catch {}
   }
 
   function requestCapturePictureInPictureFromUserGesture(): void {
@@ -162,8 +230,11 @@
 
     if (!navigator.userActivation?.isActive) return;
 
-    const video = findCapturePipTarget();
-    if (!video) return;
+    const video = getCapturePipHelper();
+    if (!video) {
+      postCapturePipState('failed', 'helper-not-ready');
+      return;
+    }
 
     if (video.disablePictureInPicture) {
       capturePipPermanentFailure = true;
@@ -196,7 +267,7 @@
 
         capturePipElement = video;
         capturePipOwned = true;
-        postCapturePipState('active');
+        postCapturePipState('active', 'helper');
 
         video.addEventListener('leavepictureinpicture', () => {
           if (capturePipElement === video) {
@@ -479,8 +550,9 @@
       accelerationRetryAttempts = 0;
       capturePipRequestInFlight = false;
       capturePipPermanentFailure = false;
+      prepareCapturePipHelper();
       postToContentScript({ type: 'mse-capture-started', sessionId });
-      postCapturePipState('waiting-user');
+      postCapturePipState('waiting-user', 'helper');
       scheduleCaptureAcceleration();
       return;
     }
