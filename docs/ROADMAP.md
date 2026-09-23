@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/hls-extensionless-segments` on the remaining HLS candidate while preserving normal playback.
-- If the HLS download succeeds, finalize the protocol-scoped extension-relaxation fix and add regression coverage.
-- If it still fails, inspect the next coarse FFmpeg failure class and HLS tag/segment format before broadening request context or relay logic.
+- Determine whether the visible HLS is an image/thumbnail playlist and whether duration-first filtering hides a real MSE/media candidate.
+- Keep PR #8 unmerged until the selected HLS candidate is confirmed to be actual A/V media.
+- If another media candidate is hidden, fix candidate classification/visibility before further FFmpeg tuning.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
