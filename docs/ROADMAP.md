@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/hls-extensionless-segments` on the remaining HLS candidate while preserving normal playback.
-- If the HLS download succeeds, finalize the protocol-scoped extension-relaxation fix and add regression coverage.
-- If it still fails, inspect the next coarse FFmpeg failure class and HLS tag/segment format before broadening request context or relay logic.
+- Compare browser-observed HLS segment/key response status, MIME, and size buckets against the FFmpeg no-stream result without collecting sensitive request values.
+- Keep PR #8 unmerged until the browser-vs-FFmpeg response-context question is resolved.
+- If browser responses are normal media/key objects, diagnose the minimal request context FFmpeg lacks; if browser responses are not media, revisit detection/playlist selection.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
