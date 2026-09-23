@@ -371,6 +371,41 @@ Manual filesystem validation after the accelerated-capture Cancel test:
 - no native MSE capture temporary directory remained after cancellation.
 
 Together with the successful-completion cleanup path already exercised during end-to-end download validation, this closes the manual temporary-spool cleanup acceptance for the tested workflow.
+## 2026-09-24 — Detached-window capture is occlusion-sensitive; test standard PiP
+
+Detached-window experiment result (PR #25, closed without merge):
+
+- Download moved the player tab into a dedicated window as designed.
+- Manual Play was still required after reload.
+- When another maximized browser/application completely covered the dedicated capture window, MSE fragment/download progress stopped.
+- When the capture window remained at least partially visible on screen, progress resumed.
+- While partially visible, capture showed intermittent short stalls.
+
+Interpretation:
+
+- a separate active tab/window alone is insufficient on this tested player/browser path;
+- the behavior is consistent with native window occlusion/render scheduling or a player loop coupled to visible rendering;
+- the intermittent stalls are suggestive but not independently proven to have the same cause;
+- do not treat Page Visibility spoofing as justified by this evidence.
+
+Next candidate on `exp/mse-pip-capture`:
+
+- keep the validated same-tab MSE capture/reload flow;
+- after reload, use the user's manual Play click as the required transient activation to request standard video Picture-in-Picture;
+- prefer the captured/accelerated video, then a unique currently playing video, then a unique eligible video;
+- do not override `disablePictureInPicture`, Permissions Policy, visibility state, focus events, or player handlers;
+- report PiP state (`waiting-user`, `active`, `existing`, `left`, `unsupported`, or `failed`) through the capture UI;
+- close only PiP that MediaGrabber itself opened when capture completes/cancels.
+
+Why PiP is a better next experiment:
+
+- standard video PiP provides a floating always-on-top video surface specifically for continued playback while the user interacts with other tabs/apps;
+- `requestPictureInPicture()` requires transient user activation, so the existing post-reload Play click is the appropriate trigger;
+- it preserves browser/player visibility semantics instead of synthesizing `document.visibilityState`.
+
+Open question:
+
+- whether keeping the video in standard PiP is enough for this transformed-XHR player to continue its JavaScript/XHR/MSE production while the source tab is backgrounded. Real-site validation is required.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
