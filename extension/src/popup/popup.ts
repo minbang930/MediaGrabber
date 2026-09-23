@@ -30,6 +30,7 @@ interface VideoInfo {
   duration?: number;
   fileSize?: number;
   detectionSource?: 'webRequest:url' | 'webRequest:content-type' | 'content:mse' | 'content:dom' | 'unknown';
+  detectionScheme?: string;
 }
 
 interface QualityOption {
@@ -221,7 +222,7 @@ function renderMediaList(videos: VideoInfo[]): void {
   
   const provenanceCounts = new Map<string, number>();
   for (const video of displayVideos) {
-    const key = `${video.type}/${video.detectionSource || 'unknown'}`;
+    const key = `${video.type}/${video.detectionSource || 'unknown'}/${video.detectionScheme || 'unknown'}`;
     provenanceCounts.set(key, (provenanceCounts.get(key) || 0) + 1);
   }
   const provenanceSummary = Array.from(provenanceCounts.entries())
@@ -279,7 +280,8 @@ function createMediaItem(video: VideoInfo, index: number): HTMLElement {
   const type = document.createElement('div');
   type.className = 'media-type';
   const source = video.detectionSource || 'unknown';
-  type.textContent = `${getTypeLabel(video.type)} · ${source}`;
+  const scheme = video.detectionScheme || 'unknown';
+  type.textContent = `${getTypeLabel(video.type)} · ${source} · ${scheme}`;
   info.appendChild(type);
 
   const title = document.createElement('div');
