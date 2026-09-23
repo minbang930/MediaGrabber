@@ -295,7 +295,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 
     if (!isMediaUrl(parsedUrl)) return;
 
-    void handleInterceptedMedia(details.tabId, details.url, undefined, getRequestReferer(details.initiator));
+    void handleInterceptedMedia(details.tabId, details.url, undefined, getRequestReferer(details.initiator), 'webRequest:url');
   },
   { urls: ['<all_urls>'] }
 );
@@ -307,7 +307,7 @@ chrome.webRequest.onHeadersReceived.addListener(
 
     const type = getMediaTypeFromContentType(getContentType(details.responseHeaders));
     if (type) {
-      void handleInterceptedMedia(details.tabId, details.url, type, getRequestReferer(details.initiator));
+      void handleInterceptedMedia(details.tabId, details.url, type, getRequestReferer(details.initiator), 'webRequest:content-type');
     }
   },
   { urls: ['<all_urls>'] },
@@ -510,7 +510,8 @@ async function handleInterceptedMedia(
   tabId: number,
   url: string,
   forcedType?: VideoInfo['type'],
-  requestReferer?: string
+  requestReferer?: string,
+  detectionSource: VideoInfo['detectionSource'] = 'unknown'
 ): Promise<void> {
   const generation = getPageGeneration(tabId);
   const seen = interceptedMediaByTab.get(tabId) || new Set<string>();
@@ -703,7 +704,8 @@ async function handleInterceptedMedia(
     referer,
     duration: duration || metadata?.duration,
     thumbnail: metadata?.thumbnail,
-    fileSize
+    fileSize,
+    detectionSource
   });
 
   console.log('[MediaGrabber] Intercepted media:', url, type);
@@ -1203,7 +1205,10 @@ function handleVideoDetected(tabId: number | undefined, video: VideoInfo, frameI
   if (!isCurrentContentGeneration(tabId, generation, frameId === 0)) {
     return { success: true, stale: true };
   }
-  upsertVideo(tabId, video);
+  upsertVideo(tabId, {
+    ...video,
+    detectionSource: video.detectionSource || (video.type === 'mse' ? 'content:mse' : 'content:dom')
+  });
   console.log(`[MediaGrabber] Detected video on tab ${tabId}:`, video.title);
   return { success: true, count: (mediaByTab.get(tabId) || []).length };
 }
