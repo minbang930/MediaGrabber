@@ -39,7 +39,7 @@ Candidate implementation:
 
 ## Next actions
 
-1. Let CI validate `fix/lazy-mse-main-hook`.
+1. PR #30 CI passed on Windows/Node 22: install, full build, CoApp tests, and extension package smoke check.
 2. Manual A/B with the compatibility-test build: Cloudflare challenge, `databento.com`, and YouTube thumbnail loading.
 3. Revalidate the previously working transformed-XHR MSE site: candidate visibility, Download/reload, 8× append capture, background/occlusion keep-alive, successful output, and Cancel teardown.
 4. If both compatibility and MSE regression tests pass, remove the temporary `[compat test]` / version marker, update architecture/decision docs, run final CI, and merge.
