@@ -41,9 +41,9 @@ Last reviewed: 2026-09-24
 
 ### Release pipeline
 
-- .github/workflows/release.yml runs only on v* tags.
-- Current release job is Windows-only.
-- CI uses Node 22.x.
+- `.github/workflows/ci.yml` runs on pull requests and pushes to `main` using Windows/Node 22 and performs install, full build, CoApp tests, and extension package smoke verification.
+- `.github/workflows/release.yml` remains tag-triggered for `v*` releases.
+- Both current CI/release jobs are Windows-based and use Node 22.x.
 - Windows release pins an FFmpeg 8.1.2 asset and yt-dlp 2026.07.04.
 - Installer downloads runtime binaries over HTTPS and verifies configured SHA-256 hashes.
 
