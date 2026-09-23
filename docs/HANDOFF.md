@@ -14,15 +14,23 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #22 merged to `main` as `19206681b33e987a1f08ef65ffa087c6264eda4f`. The tested transformed-XHR MSE path now has an explicit clear-fMP4 capture workflow: one reload, post-transform SourceBuffer capture, native ordered per-track spooling, FFmpeg muxing, up to 8× chronological playback acceleration, cancellation/rate restoration, EME/CENC guards, deterministic fragment/session tests, and PR/main CI. User validation passed end-to-end, including output correctness and temporary-file cleanup.
+PR #22 remains the validated transformed-XHR MSE capture baseline: one reload, clear SourceBuffer append capture, native ordered spooling, FFmpeg muxing, up to 8× chronological playback acceleration, cancellation/rate restoration, DRM guards, and cleanup.
 
-The active compatibility problem is now separate: a direct-download candidate on another tested site returns HTTP 404. The exact cause remains unproven. Current code does not pass saved request context on the direct-download path even though the CoApp downloader supports caller-provided headers; treat that as a hypothesis to test narrowly, not as the established root cause.
+The current UX problem is Windows occlusion/backgrounding. PR #25 detached-window capture stalled when fully covered. PR #26 real-video PiP kept capture progressing under other tabs/apps. PR #27 synthetic helper PiP also kept capture progressing, but Chrome still displayed a normal visible PiP window, so it did not satisfy the desired "keep running without a visible PiP" UX.
+
+Draft branch `exp/mse-tab-capture-keepalive` is the next experiment. It starts a video-only Chrome tab capture before the MSE reload and consumes it in a hidden offscreen extension document. Chromium has an explicit Windows `CapturesWhenOccluded` WebContents-capture browser test, making this a targeted experiment rather than a generic visibility spoof. The captured pixels are not used; the existing SourceBuffer/CoApp pipeline remains authoritative.
+
+The separate direct-download HTTP 404 remains unresolved and follows this focused MSE UX experiment.
 
 ## Next actions
 
-1. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, freshness/redirect behavior, and the minimum non-sensitive request context available to the extension/CoApp.
-2. If request context is required, design the narrowest safe propagation model; do not copy cookies, authorization tokens, or broad browser headers by default.
-3. Keep MSE compatibility evidence-driven and preserve the validated player behavior/DRM boundary.
+1. Let CI validate `exp/mse-tab-capture-keepalive`: install, full build, CoApp tests, and extension package smoke check.
+2. Load that branch's extension. CoApp replacement should not be needed because the experiment changes extension code only.
+3. Start the tested MSE download, press Play once after reload, and confirm the popup says `background keep-alive active` with no PiP window.
+4. Fully cover the browser with another maximized application and confirm captured bytes/fragments continue increasing.
+5. Test Cancel and successful completion; confirm playback rate restores and the tab-capture state/indicator ends.
+6. If tabCapture does not prevent the stall, keep PR #26 real-video PiP as the known working fallback and investigate Chromium scheduling/occlusion constraints before any invasive visibility/focus spoofing.
+7. Then return to the direct-download HTTP 404 investigation.
 
 ## Start here
 
