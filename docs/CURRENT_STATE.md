@@ -41,19 +41,20 @@ Last reviewed: 2026-09-24
 
 ### Release pipeline
 
-- .github/workflows/release.yml runs only on v* tags.
-- Current release job is Windows-only.
-- CI uses Node 22.x.
+- `.github/workflows/ci.yml` runs on pull requests and pushes to `main` using Windows/Node 22 and performs install, full build, CoApp tests, and extension package smoke verification.
+- `.github/workflows/release.yml` remains tag-triggered for `v*` releases.
+- Both current CI/release jobs are Windows-based and use Node 22.x.
 - Windows release pins an FFmpeg 8.1.2 asset and yt-dlp 2026.07.04.
 - Installer downloads runtime binaries over HTTPS and verifies configured SHA-256 hashes.
 
 ## Build and verification state
 
-- There is no automated test suite.
-- There is no lint script.
-- There is no PR or push CI workflow; only the tag-triggered release workflow exists.
-- README and the previous agent notes define a successful npm run build as the current local verification baseline.
+- PR #22 adds deterministic Node 22 tests for MSE capture session IDs and ordered fragment/chunk completeness using the same core writer used by the CoApp runtime.
+- PR #22 adds `.github/workflows/ci.yml` for pull requests and pushes to `main`; it runs `npm ci`, full build, CoApp tests, and extension package smoke verification on Windows/Node 22.
+- There is still no lint script.
+- The tag-triggered Windows release workflow remains separate.
 - npm run dev:extension is currently broken because extension/package.json has no watch script.
+- PR #22 CI passed on Windows/Node 22: dependency install, full extension/CoApp build, deterministic CoApp tests, and extension package smoke check all succeeded.
 
 ## Known compatibility findings
 
@@ -64,7 +65,7 @@ Details and observations are in EXPERIMENTS.md.
 3. Removing the MSE injector is not a viable final fix. PR #3 restored playback by minimizing XHR instrumentation. PR #6 then removed DOM source noise, reducing the popup from 14 entries to 1. Later diagnostics showed that remaining visible entry was an image-only HLS playlist with 1118 image segments, while a real `mse` candidate already existed but was hidden by duration-first visibility. Branch `fix/filter-image-hls` excludes image-only HLS media playlists from A/V candidates. User manual validation passed: playback remained normal and the MSE candidate became visible.
 4. A separate tested site returns "Download failed with HTTP 404" on direct download. The exact server-side cause is not yet proven.
 5. The code currently sends no saved request headers in the direct-download call. startDownload() passes URL, directory, and filename to downloads.download; the CoApp supports custom headers, but the extension does not currently provide them on that path. This is a plausible compatibility gap for referer/origin/auth-sensitive URLs, not yet a proven cause of the observed 404.
-6. MSE "All Segments" assembly needs validation. content.ts currently constructs FFmpeg arguments as multiple independent -i inputs followed by -c copy. It is not yet verified that this reconstructs common fragmented MP4 sequences correctly; treat this as a candidate defect until tested.
+6. The previous MSE blob/`All Segments` path is not viable for the tested transformed-XHR player. Draft PR #22 replaces it with an explicit capture session: reload once, spool clear fMP4 appends per SourceBuffer to CoApp temporary files, mux with FFmpeg, and accelerate chronological playback up to 8× during capture. User validation passed end-to-end, including accelerated capture and a normal final video.
 7. Some FFmpeg compatibility errors surfaced to users are currently Russian-language strings in background.ts.
 
 ## MSE hook risk area
@@ -89,18 +90,32 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Verification note
 
-- Full repository build could not be executed by the agent environment because outbound GitHub DNS was unavailable during clone.
+- The agent's earlier local clone/build attempt was blocked by outbound GitHub DNS, but PR #22's GitHub Actions CI now provides the repository build baseline and passed successfully on Windows/Node 22.
 - The modified XHR hook was separately type-checked against DOM typings with TypeScript 5.8 and compiled successfully.
 - User manual browser validation passed for the primary acceptance criterion: normal playback with the MSE injector enabled.
 - The persistent 14-entry popup count was traced to DOM detection noise: 12 extensionless HTTPS `<source>` descendants, 1 blob currentSrc, and 1 HLS entry.
 - User manual validation confirmed the DOM source-noise fix reduced the popup from 14 entries to 1.
 - Closed PRs #8-#14 established that the remaining visible HLS was the wrong candidate: its 1118 segments are images, FFmpeg probed the decrypted child as `image2`, and a hidden `mse` candidate was present.
 - PR #8's `extension_picky` change was closed without merge because it was tuning an image playlist rather than the main video.
-- Branch `fix/filter-image-hls` filters image-only HLS media playlists so the MSE candidate can surface.
+- PR #15 merged the image-only HLS filter; user validation confirmed playback remained normal and the MSE candidate surfaced.
+- The current append-capture branch changes both the extension and CoApp; testing it requires the branch CoApp binary, not the previously installed release binary.
 
 ## Open questions
 
-- After image-only HLS filtering, does the real MSE candidate become the sole visible media entry while playback stays normal?
-- Can the current MSE `All Segments` path reconstruct the full video, or does it need ordered fragment concatenation/muxing?
+- PR #15 validation passed: playback remains normal and the real MSE candidate is visible.
+- Diagnostics #16-#20 established that the player transforms 30 opaque XHR ArrayBuffers into separate clear audio/video fMP4 appends; filename, timing, size, and object-identity URL mapping are not reliable for this transport.
+- PR #21 observed no EME `encrypted` event, initData, or CENC markers on the tested path (`eme=0`, `drm=none`). This supports treating this specific path as clear/non-DRM while retaining runtime protection guards.
+- Draft PR #22 replaces the broken blob/URL FFmpeg path with explicit user-triggered post-transform MSE capture: reload once, capture per-SourceBuffer fragments to native temporary files, then mux the first video/audio tracks with FFmpeg.
+- First real-site validation confirmed capture arming and the one-time reload, but playback-to-end did not finalize into an output file. The same run exposed a confirmed cross-tab popup broadcast bug.
+- User validation confirmed the popup tab-scoping fix: media from other tabs no longer appears during capture. The capture still remained in a generic armed/downloading state after manual playback, so the exact stall point was not observable.
+- Lifecycle validation stopped at `reload`: the post-reload player frame never reached `frame-ready`. The cause was stale iframe identity—the session compared post-reload senders against the pre-reload `sourceFrameId`/exact frame URL.
+- PR #22 now arms post-reload frames in the selected tab as temporary candidates and locks the session only when the first actual MSE fragment arrives; other armed frames are stopped immediately after that lock.
+- Revalidation progressed into the CoApp spool and exposed a confirmed sparse-array completeness bug: an incomplete multi-chunk fragment could be flushed with `undefined` holes. The CoApp now uses explicit `receivedCount` tracking and indexed completeness checks.
+- User validation after the native spool fix succeeded end-to-end: reload, manual playback, sustained capture, final mux, and creation of a playable downloaded file all completed successfully.
+- Current UX limitation: this transport captures only media fragments the player actually appends, so complete capture presently requires the player to load the whole timeline—most reliably by playing from the beginning to the end.
+- PR #23 playback-rate acceleration passed real-site validation and has been merged into PR #22's branch. The unique-playing-video fallback successfully selected the player when exact blob matching was unavailable.
+- User validation of Cancel during accelerated capture also passed: capture stopped immediately, the player remained usable, and playback rate returned to normal.
+- Manual temporary-spool cleanup validation passed: `%TEMP%\\mediagrabber-mse-*` directory count was `0` after cancellation.
+- Deterministic MSE fragment/session tests and a Windows/Node 22 PR CI workflow have been added on PR #22; CI is currently pending.
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?

@@ -19,7 +19,30 @@
 
   let pageGeneration = 0;
   const mediaSourceGenerations = new WeakMap<MediaSource, number>();
-  const sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  let mediaSourceBlobUrls = new WeakMap<MediaSource, string>();
+  let blobUrlMediaSources = new Map<string, MediaSource>();
+  let sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  let sourceBufferMimes = new WeakMap<SourceBuffer, string>();
+  let sourceBufferMediaSources = new WeakMap<SourceBuffer, MediaSource>();
+  let sourceBufferInitScanned = new WeakSet<SourceBuffer>();
+  let capturedMediaSources = new WeakSet<MediaSource>();
+  let capturedBlobUrls = new Set<string>();
+  let captureTrackIds = new WeakMap<SourceBuffer, number>();
+  const captureFragmentIndexes = new Map<number, number>();
+  const CAPTURE_CHUNK_BYTES = 192 * 1024;
+  const CAPTURE_PLAYBACK_RATE = 8;
+  let nextCaptureTrackId = 1;
+  let activeCaptureSession: string | null = null;
+  let captureFinished = false;
+  let captureBytes = 0;
+  let captureFragments = 0;
+  let protectedMediaObserved = false;
+  let acceleratedMediaElement: HTMLMediaElement | null = null;
+  let originalPlaybackRate = 1;
+  let originalDefaultPlaybackRate = 1;
+  let accelerationRetryTimer: number | undefined;
+  let accelerationRetryAttempts = 0;
+  let accelerationTargetMode: 'blob' | 'playing-video' | 'playing-media' | null = null;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -39,9 +62,297 @@
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
     MSE_STATE.duration = 0;
+    mediaSourceBlobUrls = new WeakMap<MediaSource, string>();
+    blobUrlMediaSources = new Map<string, MediaSource>();
+    sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+    sourceBufferMimes = new WeakMap<SourceBuffer, string>();
+    sourceBufferMediaSources = new WeakMap<SourceBuffer, MediaSource>();
+    sourceBufferInitScanned = new WeakSet<SourceBuffer>();
+    capturedMediaSources = new WeakSet<MediaSource>();
+    capturedBlobUrls = new Set<string>();
+    captureTrackIds = new WeakMap<SourceBuffer, number>();
+    captureFragmentIndexes.clear();
+    nextCaptureTrackId = 1;
+    captureBytes = 0;
+    captureFragments = 0;
+    protectedMediaObserved = false;
+    restoreCaptureAcceleration();
   }
 
+  function clearAccelerationRetry(): void {
+    if (accelerationRetryTimer !== undefined) {
+      clearTimeout(accelerationRetryTimer);
+      accelerationRetryTimer = undefined;
+    }
+    accelerationRetryAttempts = 0;
+  }
+
+  function isCapturedMediaElement(element: HTMLMediaElement): boolean {
+    const current = element.currentSrc || element.src;
+    if (!current) return false;
+    if (capturedBlobUrls.has(current)) return true;
+    const mediaSource = blobUrlMediaSources.get(current);
+    return Boolean(mediaSource && capturedMediaSources.has(mediaSource));
+  }
+
+  function postAccelerationState(element: HTMLMediaElement): void {
+    if (!activeCaptureSession || captureFinished) return;
+    postToContentScript({
+      type: 'mse-capture-acceleration',
+      sessionId: activeCaptureSession,
+      requestedRate: CAPTURE_PLAYBACK_RATE,
+      effectiveRate: Number(element.playbackRate) || 1,
+      targetMode: accelerationTargetMode || 'unknown'
+    });
+  }
+
+  function restoreCaptureAcceleration(): void {
+    clearAccelerationRetry();
+    const element = acceleratedMediaElement;
+    acceleratedMediaElement = null;
+    accelerationTargetMode = null;
+    if (!element) return;
+    try {
+      element.defaultPlaybackRate = originalDefaultPlaybackRate;
+      element.playbackRate = originalPlaybackRate;
+    } catch {}
+  }
+
+  function tryApplyCaptureAcceleration(): boolean {
+    if (!activeCaptureSession || captureFinished || protectedMediaObserved) return false;
+
+    const existing = acceleratedMediaElement;
+    if (existing && isCapturedMediaElement(existing)) {
+      try {
+        existing.defaultPlaybackRate = CAPTURE_PLAYBACK_RATE;
+        existing.playbackRate = CAPTURE_PLAYBACK_RATE;
+        postAccelerationState(existing);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    const allMedia = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'));
+    let media = allMedia.find((element) => isCapturedMediaElement(element));
+    let targetMode: 'blob' | 'playing-video' | 'playing-media' | null = media ? 'blob' : null;
+
+    if (!media && captureFragments > 0) {
+      const playingVideos = allMedia.filter((element) =>
+        element instanceof HTMLVideoElement &&
+        !element.paused &&
+        !element.ended &&
+        element.readyState >= 2
+      );
+      if (playingVideos.length === 1) {
+        media = playingVideos[0];
+        targetMode = 'playing-video';
+      }
+    }
+
+    if (!media && captureFragments > 0) {
+      const playingMedia = allMedia.filter((element) =>
+        !element.paused &&
+        !element.ended &&
+        element.readyState >= 2
+      );
+      if (playingMedia.length === 1) {
+        media = playingMedia[0];
+        targetMode = 'playing-media';
+      }
+    }
+
+    if (!media || !targetMode) return false;
+
+    acceleratedMediaElement = media;
+    accelerationTargetMode = targetMode;
+    originalPlaybackRate = media.playbackRate;
+    originalDefaultPlaybackRate = media.defaultPlaybackRate;
+    try {
+      media.defaultPlaybackRate = CAPTURE_PLAYBACK_RATE;
+      media.playbackRate = CAPTURE_PLAYBACK_RATE;
+      postAccelerationState(media);
+      clearAccelerationRetry();
+      return true;
+    } catch {
+      acceleratedMediaElement = null;
+      accelerationTargetMode = null;
+      return false;
+    }
+  }
+
+  function scheduleCaptureAcceleration(): void {
+    if (tryApplyCaptureAcceleration()) return;
+    if (!activeCaptureSession || captureFinished || accelerationRetryAttempts >= 20) return;
+
+    accelerationRetryAttempts++;
+    if (accelerationRetryTimer !== undefined) clearTimeout(accelerationRetryTimer);
+    accelerationRetryTimer = window.setTimeout(() => {
+      accelerationRetryTimer = undefined;
+      scheduleCaptureAcceleration();
+    }, 250);
+  }
+
+  function getAppendView(data: any): Uint8Array | undefined {
+    try {
+      if (data instanceof ArrayBuffer) return new Uint8Array(data);
+      if (ArrayBuffer.isView(data)) {
+        return new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+      }
+    } catch {}
+    return undefined;
+  }
+
+  function containsAsciiMarker(view: Uint8Array, marker: string): boolean {
+    const markerBytes = Array.from(marker).map((char) => char.charCodeAt(0));
+    const limit = Math.min(view.byteLength, 512 * 1024);
+    outer: for (let i = 0; i <= limit - markerBytes.length; i++) {
+      for (let j = 0; j < markerBytes.length; j++) {
+        if (view[i + j] !== markerBytes[j]) continue outer;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function hasProtectedMediaMarker(view: Uint8Array | undefined): boolean {
+    if (!view) return false;
+    return ['pssh', 'sinf', 'schm', 'tenc', 'encv', 'enca', 'cenc', 'cbcs']
+      .some((marker) => containsAsciiMarker(view, marker));
+  }
+
+  function stopCapture(error?: string): void {
+    const sessionId = activeCaptureSession;
+    restoreCaptureAcceleration();
+    activeCaptureSession = null;
+    captureFinished = true;
+    if (sessionId && error) {
+      postToContentScript({
+        type: 'mse-capture-error',
+        sessionId,
+        error
+      });
+    }
+  }
+
+  function finishCapture(): void {
+    if (!activeCaptureSession || captureFinished) return;
+    const sessionId = activeCaptureSession;
+    restoreCaptureAcceleration();
+    captureFinished = true;
+    activeCaptureSession = null;
+    postToContentScript({
+      type: 'mse-capture-complete',
+      sessionId,
+      bytes: captureBytes,
+      fragments: captureFragments
+    });
+  }
+
+  function ensureCaptureTrack(sourceBuffer: SourceBuffer): { id: number; mime: string } | undefined {
+    const mime = sourceBufferMimes.get(sourceBuffer);
+    if (!mime || !isVideoMime(mime)) return undefined;
+
+    let id = captureTrackIds.get(sourceBuffer);
+    if (!id) {
+      id = nextCaptureTrackId++;
+      captureTrackIds.set(sourceBuffer, id);
+      captureFragmentIndexes.set(id, 0);
+
+      const mediaSource = sourceBufferMediaSources.get(sourceBuffer);
+      if (mediaSource) {
+        capturedMediaSources.add(mediaSource);
+        const blobUrl = mediaSourceBlobUrls.get(mediaSource);
+        if (blobUrl) capturedBlobUrls.add(blobUrl);
+      }
+      scheduleCaptureAcceleration();
+    }
+    return { id, mime };
+  }
+
+  function postCaptureFragment(
+    sessionId: string,
+    trackId: number,
+    mime: string,
+    fragmentIndex: number,
+    chunks: Uint8Array[]
+  ): void {
+    const chunkCount = chunks.length;
+    chunks.forEach((bytes, chunkIndex) => {
+      postToContentScript({
+        type: 'mse-capture-chunk',
+        sessionId,
+        trackId,
+        mime,
+        fragmentIndex,
+        chunkIndex,
+        chunkCount,
+        bytes
+      });
+    });
+  }
+
+  window.addEventListener('message', (event) => {
+    if (
+      event.source !== window ||
+      !event.data ||
+      event.data.source !== 'MediaGrabber-Content'
+    ) return;
+
+    if (event.data.type === 'mse-capture-start') {
+      const sessionId = String(event.data.sessionId || '');
+      if (!sessionId) return;
+
+      if (activeCaptureSession === sessionId && !captureFinished) {
+        postToContentScript({ type: 'mse-capture-started', sessionId });
+        return;
+      }
+
+      if (protectedMediaObserved) {
+        postToContentScript({
+          type: 'mse-capture-error',
+          sessionId,
+          error: 'Protected EME/CENC media is not supported.'
+        });
+        return;
+      }
+
+      restoreCaptureAcceleration();
+      activeCaptureSession = sessionId;
+      captureFinished = false;
+      capturedMediaSources = new WeakSet<MediaSource>();
+      capturedBlobUrls = new Set<string>();
+      captureTrackIds = new WeakMap<SourceBuffer, number>();
+      captureFragmentIndexes.clear();
+      nextCaptureTrackId = 1;
+      captureBytes = 0;
+      captureFragments = 0;
+      accelerationRetryAttempts = 0;
+      postToContentScript({ type: 'mse-capture-started', sessionId });
+      scheduleCaptureAcceleration();
+      return;
+    }
+
+    if (
+      event.data.type === 'mse-capture-stop' &&
+      activeCaptureSession &&
+      event.data.sessionId === activeCaptureSession
+    ) {
+      stopCapture();
+    }
+  });
+
+  document.addEventListener('encrypted', () => {
+    protectedMediaObserved = true;
+    if (activeCaptureSession) {
+      stopCapture('Protected EME/CENC media is not supported.');
+    }
+  }, true);
+
   function notifyNavigation(): void {
+    if (activeCaptureSession) {
+      stopCapture('Page navigation interrupted the MSE capture.');
+    }
     pageGeneration++;
     resetMSEState();
     postToContentScript({ type: 'navigation' });
@@ -133,8 +444,21 @@
   URL.createObjectURL = function(obj: any): string {
     const url = origCreateObjectURL.call(this, obj);
     if (obj instanceof MediaSource) {
-      mediaSourceGenerations.set(obj, pageGeneration);
+      const generation = pageGeneration;
+      mediaSourceGenerations.set(obj, generation);
+      mediaSourceBlobUrls.set(obj, url);
+      blobUrlMediaSources.set(url, obj);
       MSE_STATE.blobUrl = url;
+      try {
+        obj.addEventListener('sourceended', () => {
+          if (
+            generation === pageGeneration &&
+            capturedMediaSources.has(obj)
+          ) {
+            finishCapture();
+          }
+        }, { once: true });
+      } catch {}
       postToContentScript({ type: 'mse-detected', blobUrl: url });
     }
     return url;
@@ -155,47 +479,166 @@
     }
     const sourceBuffer = origAddSourceBuffer.call(this, mimeType);
     sourceBufferGenerations.set(sourceBuffer, generation);
+    sourceBufferMimes.set(sourceBuffer, mimeType);
+    sourceBufferMediaSources.set(sourceBuffer, this);
     return sourceBuffer;
   };
 
   const origAppendBuffer = SourceBuffer.prototype.appendBuffer;
   SourceBuffer.prototype.appendBuffer = function(data: any): void {
+    let capturePayload: {
+      sessionId: string;
+      trackId: number;
+      mime: string;
+      fragmentIndex: number;
+      view: Uint8Array;
+      bytes: number;
+    } | undefined;
+
     try {
       const generation = sourceBufferGenerations.get(this);
-      if (generation !== pageGeneration) return;
+      if (generation === pageGeneration) {
+        const view = getAppendView(data);
 
-      if (generation === pageGeneration && data instanceof ArrayBuffer) {
-        MSE_STATE.totalBytes += data.byteLength;
-      } else if (generation === pageGeneration && data && data.buffer) {
-        MSE_STATE.totalBytes += data.buffer.byteLength;
-      }
+        if (!sourceBufferInitScanned.has(this)) {
+          sourceBufferInitScanned.add(this);
+          if (hasProtectedMediaMarker(view)) {
+            protectedMediaObserved = true;
+            if (activeCaptureSession) {
+              stopCapture('Protected EME/CENC media is not supported.');
+            }
+          }
+        }
 
-      MSE_STATE.segmentCount++;
+        if (data instanceof ArrayBuffer) {
+          MSE_STATE.totalBytes += data.byteLength;
+        } else if (data && data.buffer) {
+          MSE_STATE.totalBytes += data.byteLength || data.buffer.byteLength;
+        }
 
-      if (MSE_STATE.segmentCount === 1) {
-        postToContentScript({
-          type: 'first-segment',
-          blobUrl: MSE_STATE.blobUrl,
-          mimeType: MSE_STATE.mimeType,
-          codecs: MSE_STATE.codecs,
-          totalBytes: MSE_STATE.totalBytes,
-          segmentCount: MSE_STATE.segmentCount
-        });
-      }
+        MSE_STATE.segmentCount++;
 
-      if (MSE_STATE.segmentCount % 50 === 0) {
-        postToContentScript({
-          type: 'progress',
-          blobUrl: MSE_STATE.blobUrl,
-          totalBytes: MSE_STATE.totalBytes,
-          segmentCount: MSE_STATE.segmentCount
-        });
+        if (
+          activeCaptureSession &&
+          !captureFinished &&
+          !protectedMediaObserved &&
+          view &&
+          view.byteLength > 0
+        ) {
+          const track = ensureCaptureTrack(this);
+          if (track) {
+            const fragmentIndex = captureFragmentIndexes.get(track.id) || 0;
+            captureFragmentIndexes.set(track.id, fragmentIndex + 1);
+
+            capturePayload = {
+              sessionId: activeCaptureSession,
+              trackId: track.id,
+              mime: track.mime,
+              fragmentIndex,
+              view,
+              bytes: view.byteLength
+            };
+          }
+        }
+
+        if (MSE_STATE.segmentCount === 1) {
+          postToContentScript({
+            type: 'first-segment',
+            blobUrl: MSE_STATE.blobUrl,
+            mimeType: MSE_STATE.mimeType,
+            codecs: MSE_STATE.codecs,
+            totalBytes: MSE_STATE.totalBytes,
+            segmentCount: MSE_STATE.segmentCount
+          });
+        }
+
+        if (MSE_STATE.segmentCount % 50 === 0) {
+          postToContentScript({
+            type: 'progress',
+            blobUrl: MSE_STATE.blobUrl,
+            totalBytes: MSE_STATE.totalBytes,
+            segmentCount: MSE_STATE.segmentCount
+          });
+        }
       }
     } catch {}
-    finally {
-      origAppendBuffer.call(this, data);
+
+    origAppendBuffer.call(this, data);
+
+    if (
+      capturePayload &&
+      activeCaptureSession === capturePayload.sessionId &&
+      !captureFinished
+    ) {
+      const chunks: Uint8Array[] = [];
+      for (let offset = 0; offset < capturePayload.view.byteLength; offset += CAPTURE_CHUNK_BYTES) {
+        chunks.push(
+          capturePayload.view.slice(
+            offset,
+            Math.min(capturePayload.view.byteLength, offset + CAPTURE_CHUNK_BYTES)
+          )
+        );
+      }
+
+      captureBytes += capturePayload.bytes;
+      captureFragments++;
+      if (captureFragments === 1) {
+        accelerationRetryAttempts = 0;
+        scheduleCaptureAcceleration();
+      }
+      postCaptureFragment(
+        capturePayload.sessionId,
+        capturePayload.trackId,
+        capturePayload.mime,
+        capturePayload.fragmentIndex,
+        chunks
+      );
+
+      if (captureFragments === 1 || captureFragments % 10 === 0) {
+        postToContentScript({
+          type: 'mse-capture-progress',
+          sessionId: capturePayload.sessionId,
+          bytes: captureBytes,
+          fragments: captureFragments
+        });
+      }
     }
   };
+
+  document.addEventListener('ended', (event) => {
+    if (!(event.target instanceof HTMLMediaElement)) return;
+    const current = event.target.currentSrc || event.target.src;
+    if (!current) return;
+
+    const mediaSource = blobUrlMediaSources.get(current);
+    if (
+      capturedBlobUrls.has(current) ||
+      (mediaSource && capturedMediaSources.has(mediaSource))
+    ) {
+      finishCapture();
+    }
+  }, true);
+
+  document.addEventListener('play', (event) => {
+    if (
+      event.target instanceof HTMLMediaElement &&
+      activeCaptureSession &&
+      isCapturedMediaElement(event.target)
+    ) {
+      scheduleCaptureAcceleration();
+    }
+  }, true);
+
+  document.addEventListener('ratechange', (event) => {
+    if (
+      event.target instanceof HTMLMediaElement &&
+      event.target === acceleratedMediaElement &&
+      activeCaptureSession &&
+      !captureFinished
+    ) {
+      postAccelerationState(event.target);
+    }
+  }, true);
 
   const origDurationDesc = Object.getOwnPropertyDescriptor(MediaSource.prototype, 'duration');
   if (origDurationDesc && origDurationDesc.set) {
@@ -268,4 +711,6 @@
 
     return result;
   };
+
+  postToContentScript({ type: 'mse-hook-ready' });
 })();

@@ -160,6 +160,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  void abortMseCaptureForTab(tabId);
   currentPageUrlByTab.set(tabId, null);
   navigationGenerationByTab.delete(tabId);
   resetTabState(tabId);
@@ -169,16 +170,45 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 const activeDownloads = new Map<string, {
   pid?: number;
   downloadId?: number;
-  type: 'convert' | 'direct' | 'ytdlp';
+  type: 'convert' | 'direct' | 'ytdlp' | 'mse-capture';
   video?: VideoInfo;
   directory: string;
   filename: string;
   tabId?: number;
-  lastProgress?: { percent: number; speed?: string; bytesReceived?: number; totalBytes?: number; eta?: number };
+  captureSessionId?: string;
+  lastProgress?: {
+    percent: number;
+    speed?: string;
+    bytesReceived?: number;
+    totalBytes?: number;
+    eta?: number;
+    capture?: boolean;
+    phase?: string;
+    fragments?: number;
+    requestedRate?: number;
+    effectiveRate?: number;
+    targetMode?: string;
+  };
 }>();
+
+interface MseCaptureSession {
+  sessionId: string;
+  downloadKey: string;
+  tabId: number;
+  sourceFrameId?: number;
+  sourceFrameUrl?: string;
+  activeFrameId?: number;
+  armedFrameIds: Set<number>;
+  outputPath: string;
+  finalizing: boolean;
+  firstChunkSeen: boolean;
+}
+
+const mseCaptureByTab = new Map<number, MseCaptureSession>();
 
 // Popup connections
 const popupPorts = new Set<chrome.runtime.Port>();
+const popupTabIds = new Map<chrome.runtime.Port, number>();
 
 // Default download directory (sent by CoApp or fallback)
 let defaultDownloadDir = '';
@@ -217,7 +247,7 @@ nativeClient.listen({
   convertOutput: (progressTime: number, currentSeconds: number, info: any) => {
     for (const [key, dl] of activeDownloads) {
       if (!dl.video) continue;
-      if (dl.type !== 'convert' && dl.type !== 'ytdlp') continue;
+      if (dl.type !== 'convert' && dl.type !== 'ytdlp' && dl.type !== 'mse-capture') continue;
       const duration = dl.video.duration || 0;
       const percent = info?.percent != null
         ? Math.min(100, info.percent)
@@ -236,14 +266,14 @@ nativeClient.listen({
   // CoApp tells us the ffmpeg PID for a convert operation
   convertStartNotification: (startHandler: any, pid: number) => {
     const keyedDownload = activeDownloads.get(String(startHandler));
-    if (keyedDownload && keyedDownload.type === 'convert') {
+    if (keyedDownload && (keyedDownload.type === 'convert' || keyedDownload.type === 'mse-capture')) {
       keyedDownload.pid = pid;
       return;
     }
 
     // Fallback for older CoApp calls without startHandler.
     for (const dl of activeDownloads.values()) {
-      if (dl.type === 'convert' && dl.pid === undefined) {
+      if ((dl.type === 'convert' || dl.type === 'mse-capture') && dl.pid === undefined) {
         dl.pid = pid;
         break;
       }
@@ -742,6 +772,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
     port.onDisconnect.addListener(() => {
       popupPorts.delete(port);
+      popupTabIds.delete(port);
     });
   }
 });
@@ -750,17 +781,21 @@ function handlePopupMessage(port: chrome.runtime.Port, msg: any): void {
   switch (msg.type) {
     case 'GET_MEDIA':
       if (typeof msg.tabId === 'number') {
+        popupTabIds.set(port, msg.tabId);
         const videos = getVisibleVideosForTab(msg.tabId);
         port.postMessage({ type: 'MEDIA_LIST', videos });
       } else {
         chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-          const videos = tabs[0]?.id ? getVisibleVideosForTab(tabs[0].id) : [];
+          const tabId = tabs[0]?.id;
+          if (typeof tabId === 'number') popupTabIds.set(port, tabId);
+          const videos = typeof tabId === 'number' ? getVisibleVideosForTab(tabId) : [];
           port.postMessage({ type: 'MEDIA_LIST', videos });
         });
       }
       break;
 
     case 'DOWNLOAD':
+      if (typeof msg.tabId === 'number') popupTabIds.set(port, msg.tabId);
       startDownload(msg.video, msg.filename, msg.tabId)
         .then(result => port.postMessage({ type: 'DOWNLOAD_STARTED', ...result }))
         .catch(err => port.postMessage({ type: 'ERROR', message: err.message }));
@@ -774,6 +809,7 @@ function handlePopupMessage(port: chrome.runtime.Port, msg: any): void {
 
     case 'GET_ACTIVE_DOWNLOAD': {
       const tabId = msg.tabId;
+      if (typeof tabId === 'number') popupTabIds.set(port, tabId);
       const entry = [...activeDownloads.entries()].find(([, dl]) => dl.tabId === tabId);
       if (entry) {
         const [key, dl] = entry;
@@ -792,13 +828,22 @@ function handlePopupMessage(port: chrome.runtime.Port, msg: any): void {
   }
 }
 
+function forEachPopupForTab(tabId: number | undefined, callback: (port: chrome.runtime.Port) => void): void {
+  popupPorts.forEach((port) => {
+    if (tabId === undefined || popupTabIds.get(port) === tabId) {
+      callback(port);
+    }
+  });
+}
+
 function notifyPopups(tabId: number): void {
+  const hasActiveDownload = [...activeDownloads.values()].some((download) => download.tabId === tabId);
+  if (hasActiveDownload) return;
+
   const videos = getVisibleVideosForTab(tabId);
-  if (videos) {
-    popupPorts.forEach(port => {
-      port.postMessage({ type: 'MEDIA_LIST', videos });
-    });
-  }
+  forEachPopupForTab(tabId, (port) => {
+    port.postMessage({ type: 'MEDIA_LIST', videos });
+  });
 }
 
 // --- Download orchestration ---
@@ -977,48 +1022,72 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
 
     return { success: true, downloadId: downloadKey };
   } else if (video.type === 'mse') {
-    // MSE stream — use FFmpeg with captured segment URLs if available
-    const downloadKey = `convert_${Date.now()}`;
+    if (tabId === undefined) {
+      throw new Error('MSE capture requires an active browser tab.');
+    }
+
+    if (mseCaptureByTab.has(tabId)) {
+      await abortMseCaptureForTab(tabId);
+    }
+
+    const downloadKey = `msecap_${Date.now()}`;
+    const sessionId = `mse_${tabId}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const outputPath = joinOutputPath(directory, outFilename);
-    const formatArgs = video.qualities[0]?.formatArgs;
+
+    await nativeClient.mseCaptureStart(sessionId);
+
+    const session: MseCaptureSession = {
+      sessionId,
+      downloadKey,
+      tabId,
+      sourceFrameId: video.sourceFrameId,
+      sourceFrameUrl: video.sourceFrameUrl,
+      armedFrameIds: new Set<number>(),
+      outputPath,
+      finalizing: false,
+      firstChunkSeen: false
+    };
+    mseCaptureByTab.set(tabId, session);
 
     activeDownloads.set(downloadKey, {
-      type: 'convert',
+      type: 'mse-capture',
       video,
       directory,
       filename: outFilename,
-      tabId
-    });
-
-    const ffmpegArgs = formatArgs && formatArgs.length > 0
-      ? [...formatArgs, '-y', outputPath]
-      : ['-i', video.url, '-c', 'copy', '-y', outputPath];
-
-    nativeClient.convert(
-      ffmpegArgs,
-      { progressTime: 1000, startHandler: downloadKey }
-    ).then(result => {
-      if (result.exitCode === 0) {
-        notify('Download complete', outFilename);
-        popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_COMPLETE', downloadId: downloadKey, outputPath });
-        });
-      } else {
-        notify('Download failed', outFilename);
-        popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: formatFfmpegError(result.exitCode, result.stderr) });
-        });
+      tabId,
+      captureSessionId: sessionId,
+      lastProgress: {
+        percent: 0,
+        bytesReceived: 0,
+        totalBytes: 0,
+        capture: true,
+        phase: 'reload',
+        fragments: 0
       }
-      activeDownloads.delete(downloadKey);
-    }).catch(err => {
-      notify('Download failed', err.message);
-      popupPorts.forEach(port => {
-        port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: err.message });
-      });
-      activeDownloads.delete(downloadKey);
     });
 
-    return { success: true, downloadId: downloadKey };
+    notify(
+      'MSE capture armed',
+      'The page will reload. Start playback from the beginning and let it play until capture finishes.'
+    );
+
+    setTimeout(() => {
+      try {
+        chrome.tabs.reload(tabId, {}, () => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError) {
+            void failMseCapture(session, `Could not reload the page for MSE capture: ${lastError.message}`);
+          }
+        });
+      } catch (error: any) {
+        void failMseCapture(
+          session,
+          `Could not reload the page for MSE capture: ${error?.message || String(error)}`
+        );
+      }
+    }, 250);
+
+    return { success: true, downloadId: downloadKey, capture: true };
   } else if (video.type === 'ytdlp') {
     // yt-dlp path (YouTube etc.)
     const downloadKey = `ytdlp_${Date.now()}`;
@@ -1136,6 +1205,9 @@ async function handleCancelDownload(downloadId: string): Promise<any> {
     await nativeClient.abortYtdlp(dl.pid);
   } else if (dl.type === 'direct' && dl.downloadId !== undefined) {
     await nativeClient.cancelDownload(dl.downloadId);
+  } else if (dl.type === 'mse-capture' && dl.tabId !== undefined) {
+    await abortMseCaptureForTab(dl.tabId);
+    return { success: true };
   }
 
   activeDownloads.delete(downloadId);
@@ -1164,6 +1236,27 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
     case 'PAGE_NAVIGATION':
       return handlePageNavigation(sender.tab?.id, message.pageUrl, message.generation, sender.frameId, sender.url, sender.tab?.url);
 
+    case 'MSE_CAPTURE_READY':
+      return handleMseCaptureReady(sender);
+
+    case 'MSE_CAPTURE_STARTED':
+      return handleMseCaptureStarted(sender, message);
+
+    case 'MSE_CAPTURE_CHUNK':
+      return handleMseCaptureChunk(sender, message);
+
+    case 'MSE_CAPTURE_PROGRESS':
+      return handleMseCaptureProgress(sender, message);
+
+    case 'MSE_CAPTURE_ACCELERATION':
+      return handleMseCaptureAcceleration(sender, message);
+
+    case 'MSE_CAPTURE_FINISH':
+      return handleMseCaptureFinish(sender, message);
+
+    case 'MSE_CAPTURE_ERROR':
+      return handleMseCaptureError(sender, message);
+
     case 'GET_VIDEOS':
       return getVideosForTab(message.tabId);
 
@@ -1183,6 +1276,337 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
     default:
       return { error: `Unknown message type: ${message.type}` };
   }
+}
+
+function mseCaptureSenderMatches(
+  session: MseCaptureSession,
+  sender: chrome.runtime.MessageSender
+): boolean {
+  if (sender.tab?.id !== session.tabId) return false;
+  const frameId = sender.frameId ?? 0;
+
+  if (session.activeFrameId !== undefined) {
+    return frameId === session.activeFrameId;
+  }
+
+  return session.armedFrameIds.has(frameId);
+}
+
+function stopOtherMseCaptureFrames(session: MseCaptureSession, keepFrameId: number): void {
+  for (const frameId of session.armedFrameIds) {
+    if (frameId === keepFrameId) continue;
+    try {
+      chrome.tabs.sendMessage(
+        session.tabId,
+        { type: 'MSE_CAPTURE_STOP', sessionId: session.sessionId },
+        { frameId },
+        () => { void chrome.runtime.lastError; }
+      );
+    } catch {
+      // Candidate frame may already have navigated away.
+    }
+  }
+  session.armedFrameIds = new Set([keepFrameId]);
+}
+
+function updateMseCapturePhase(
+  session: MseCaptureSession,
+  phase: string,
+  extra: Partial<{
+    bytesReceived: number;
+    fragments: number;
+    requestedRate: number;
+    effectiveRate: number;
+    targetMode: string;
+  }> = {}
+): void {
+  const dl = activeDownloads.get(session.downloadKey);
+  const previous = dl?.lastProgress;
+  const progress = {
+    percent: 0,
+    bytesReceived: extra.bytesReceived ?? previous?.bytesReceived ?? 0,
+    totalBytes: 0,
+    fragments: extra.fragments ?? previous?.fragments ?? 0,
+    requestedRate: extra.requestedRate ?? previous?.requestedRate,
+    effectiveRate: extra.effectiveRate ?? previous?.effectiveRate,
+    targetMode: extra.targetMode ?? previous?.targetMode,
+    capture: true,
+    phase
+  };
+
+  if (dl) dl.lastProgress = progress;
+
+  forEachPopupForTab(session.tabId, (port) => {
+    port.postMessage({
+      type: 'DOWNLOAD_PROGRESS',
+      downloadId: session.downloadKey,
+      progress
+    });
+  });
+}
+
+function handleMseCaptureReady(sender: chrome.runtime.MessageSender): any {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) return { active: false };
+
+  const session = mseCaptureByTab.get(tabId);
+  if (!session || session.finalizing) return { active: false };
+
+  const frameId = sender.frameId ?? 0;
+  if (session.activeFrameId !== undefined && frameId !== session.activeFrameId) {
+    return { active: false };
+  }
+
+  const firstReadyFrame = session.armedFrameIds.size === 0;
+  session.armedFrameIds.add(frameId);
+  if (firstReadyFrame) {
+    updateMseCapturePhase(session, 'frame-ready');
+  }
+
+  return { active: true, sessionId: session.sessionId };
+}
+
+function handleMseCaptureStarted(sender: chrome.runtime.MessageSender, message: any): any {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    session.finalizing ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  updateMseCapturePhase(session, 'hook-armed');
+  return { success: true };
+}
+
+async function handleMseCaptureChunk(sender: chrome.runtime.MessageSender, message: any): Promise<any> {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    session.finalizing ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  const frameId = sender.frameId ?? 0;
+  if (session.activeFrameId === undefined) {
+    session.activeFrameId = frameId;
+    stopOtherMseCaptureFrames(session, frameId);
+  }
+
+  const result = await nativeClient.mseCaptureAppend(
+    session.sessionId,
+    Number(message.trackId),
+    String(message.mime || ''),
+    Number(message.fragmentIndex),
+    Number(message.chunkIndex),
+    Number(message.chunkCount),
+    String(message.base64 || '')
+  );
+
+  if (!session.firstChunkSeen) {
+    session.firstChunkSeen = true;
+    updateMseCapturePhase(session, 'first-fragment');
+  }
+
+  return result;
+}
+
+function handleMseCaptureProgress(sender: chrome.runtime.MessageSender, message: any): any {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  const bytesReceived = Math.max(0, Number(message.bytes) || 0);
+  const fragments = Math.max(0, Number(message.fragments) || 0);
+  updateMseCapturePhase(session, 'capture', { bytesReceived, fragments });
+  return { success: true };
+}
+
+function handleMseCaptureAcceleration(sender: chrome.runtime.MessageSender, message: any): any {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    session.finalizing ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  const requestedRate = Math.max(1, Number(message.requestedRate) || 1);
+  const effectiveRate = Math.max(0, Number(message.effectiveRate) || 1);
+  const targetMode = String(message.targetMode || 'unknown');
+  const currentPhase = activeDownloads.get(session.downloadKey)?.lastProgress?.phase || 'hook-armed';
+  updateMseCapturePhase(session, currentPhase, { requestedRate, effectiveRate, targetMode });
+  return { success: true };
+}
+
+function buildMseMuxArgs(
+  tracks: Array<{ id: number; mime: string; path: string; bytes: number }>,
+  outputPath: string
+): string[] {
+  const args: string[] = [];
+  tracks.forEach((track) => {
+    args.push('-i', track.path);
+  });
+
+  const videoIndex = tracks.findIndex((track) => track.mime.startsWith('video/'));
+  const audioIndex = tracks.findIndex((track) => track.mime.startsWith('audio/'));
+  if (videoIndex < 0 && audioIndex < 0) {
+    throw new Error('Captured MSE tracks do not contain audio or video.');
+  }
+
+  if (videoIndex >= 0) args.push('-map', `${videoIndex}:v:0`);
+  if (audioIndex >= 0) args.push('-map', `${audioIndex}:a:0`);
+  args.push('-c', 'copy', '-movflags', '+faststart', '-y', outputPath);
+  return args;
+}
+
+function sendMseCaptureStop(session: MseCaptureSession): void {
+  const message = { type: 'MSE_CAPTURE_STOP', sessionId: session.sessionId };
+  try {
+    if (session.activeFrameId !== undefined) {
+      chrome.tabs.sendMessage(session.tabId, message, { frameId: session.activeFrameId }, () => {
+        void chrome.runtime.lastError;
+      });
+    } else {
+      chrome.tabs.sendMessage(session.tabId, message, () => {
+        void chrome.runtime.lastError;
+      });
+    }
+  } catch {
+    // The tab/frame may already be gone.
+  }
+}
+
+async function failMseCapture(session: MseCaptureSession, error: string, notifyPopup = true): Promise<void> {
+  sendMseCaptureStop(session);
+  mseCaptureByTab.delete(session.tabId);
+  try {
+    await nativeClient.mseCaptureAbort(session.sessionId);
+  } catch {
+    // Best-effort temporary-file cleanup.
+  }
+
+  activeDownloads.delete(session.downloadKey);
+  if (notifyPopup) {
+    popupPorts.forEach((port) => {
+      port.postMessage({
+        type: 'DOWNLOAD_ERROR',
+        downloadId: session.downloadKey,
+        error
+      });
+    });
+    notify('Download failed', error);
+  }
+}
+
+async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
+  if (session.finalizing) return;
+  session.finalizing = true;
+
+  const dl = activeDownloads.get(session.downloadKey);
+  if (!dl) {
+    await failMseCapture(session, 'MSE capture state was lost.');
+    return;
+  }
+
+  try {
+    updateMseCapturePhase(session, 'finalizing');
+
+    const captured = await nativeClient.mseCaptureFinish(session.sessionId);
+    const args = buildMseMuxArgs(captured.tracks, session.outputPath);
+    const result = await nativeClient.convert(args, {
+      progressTime: 1000,
+      startHandler: session.downloadKey
+    });
+
+    if (result.exitCode !== 0) {
+      throw new Error(formatFfmpegError(result.exitCode, result.stderr));
+    }
+
+    try {
+      await nativeClient.mseCaptureCleanup(session.sessionId);
+    } catch {
+      // The output file is already complete; temp cleanup is best-effort.
+    }
+
+    popupPorts.forEach((port) => {
+      port.postMessage({
+        type: 'DOWNLOAD_COMPLETE',
+        downloadId: session.downloadKey,
+        outputPath: session.outputPath
+      });
+    });
+    notify('Download complete', dl.filename);
+    activeDownloads.delete(session.downloadKey);
+    mseCaptureByTab.delete(session.tabId);
+  } catch (error: any) {
+    await failMseCapture(
+      session,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+}
+
+async function handleMseCaptureFinish(sender: chrome.runtime.MessageSender, message: any): Promise<any> {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  await finalizeMseCapture(session);
+  return { success: true };
+}
+
+async function handleMseCaptureError(sender: chrome.runtime.MessageSender, message: any): Promise<any> {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  await failMseCapture(session, String(message.error || 'MSE capture failed'));
+  return { success: true };
+}
+
+async function abortMseCaptureForTab(tabId: number): Promise<void> {
+  const session = mseCaptureByTab.get(tabId);
+  if (!session) return;
+
+  const dl = activeDownloads.get(session.downloadKey);
+  if (dl?.pid !== undefined) {
+    try {
+      await nativeClient.abortConvert(dl.pid);
+    } catch {
+      // Conversion may already have exited.
+    }
+  }
+
+  await failMseCapture(session, 'MSE capture cancelled.', false);
 }
 
 function currentTopPageUrl(tabId: number, senderTabUrl?: string): string | undefined {
@@ -1224,8 +1648,11 @@ function handleVideoDetected(tabId: number | undefined, video: VideoInfo, frameI
   if (!isCurrentContentGeneration(tabId, generation, frameId === 0)) {
     return { success: true, stale: true };
   }
-  upsertVideo(tabId, video);
-  console.log(`[MediaGrabber] Detected video on tab ${tabId}:`, video.title);
+  const storedVideo = video.type === 'mse'
+    ? { ...video, sourceFrameId: frameId, sourceFrameUrl: frameUrl }
+    : video;
+  upsertVideo(tabId, storedVideo);
+  console.log(`[MediaGrabber] Detected video on tab ${tabId}:`, storedVideo.title);
   return { success: true, count: (mediaByTab.get(tabId) || []).length };
 }
 

@@ -142,6 +142,235 @@ Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excl
 
 Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
+## 2026-09-24 — Transformed MSE path is clear; implement append capture
+
+Diagnostic sequence after the real MSE candidate was surfaced:
+
+- capture-state diagnostic: two SourceBuffers, active appends, zero URL capture;
+- container diagnostic: audio/video buffers are fragmented MP4 (`ftyp` init followed by `moof` media fragments);
+- timing diagnostic: XHR responses are close to appends but usually ambiguous, so nearest-XHR mapping is unsafe;
+- identity diagnostic: 30 XHR ArrayBuffers produce 60 MSE appends with zero exact/backing-buffer identity matches;
+- raw-source diagnostic: all 30 XHR ArrayBuffers classify as `other`, not a standard media container;
+- DRM-boundary diagnostic: `eme=0`, `initData=none`, and `drm=none` for both audio/video init fragments.
+
+Confirmed interpretation for the tested player:
+
+- useful standard fMP4 exists only after page-side transformation;
+- replaying detected URLs cannot reconstruct this transport safely;
+- the observed post-transform fMP4 is clear/non-DRM within the tested EME/CENC checks.
+
+Implementation on `fix/mse-append-capture`:
+
+- MSE Download creates a native capture session and reloads the page once;
+- the matching player frame arms a capture handshake at `document_start`;
+- capture is inactive during ordinary browsing and detection;
+- clear SourceBuffer fragments are copied only after the native append call returns, split into 192 KiB chunks, and sent through content/background to CoApp;
+- CoApp spools each SourceBuffer to a temporary ordered track file with bounded pending state;
+- source-end/media-end finalizes capture; FFmpeg stream-copies the first video/audio tracks into the requested output;
+- EME events or CENC markers abort capture instead of attempting protected-media handling;
+- cancellation, errors, and host exit clean temporary capture files.
+
+Status: implementation complete on the work branch; full build and real-site playback/output validation are pending.
+
+## 2026-09-24 — First append-capture real-site validation
+
+Observation:
+
+- pressing Download created the MSE capture session and reloaded the selected tab once;
+- playback did not autoplay after reload; manual playback was required and worked;
+- after playing to the end, no output file appeared and the popup stayed in the downloading state;
+- while the capture tab was reloading/playing, the popup media list cycled through media detected in other tabs.
+
+Confirmed defect:
+
+- popup media refreshes were globally broadcast to every popup port even though `notifyPopups(tabId)` received a tab ID.
+
+Follow-up changes on PR #22:
+
+- popup ports are now bound to their selected tab and media refreshes are tab-scoped;
+- media-list refreshes are suppressed while that tab has an active download so reload-time detection does not overwrite the progress UI;
+- MSE completion now tracks the MediaSource that owns captured SourceBuffers rather than comparing against the single latest global blob URL;
+- cross-world capture payloads use `ArrayBuffer.isView` instead of realm-sensitive `instanceof`;
+- capture UI now reports captured bytes/fragments and a distinct finalizing phase.
+
+Status: second real-site validation pending. The first run confirms capture arming/reload works, but does not yet confirm that fragment transport or final mux completes.
+## 2026-09-24 — Second append-capture validation: tab isolation fixed, capture phase still opaque
+
+Observation:
+
+- after the popup tab-scoping fix, media from other tabs no longer appears during the capture workflow;
+- Download still reloads the selected tab once;
+- the popup remains in the generic armed/downloading UI after manual playback, with no visible captured-byte/fragment progress.
+
+Interpretation:
+
+- the cross-tab popup broadcast defect is confirmed fixed by user validation;
+- the remaining blocker could be before capture-frame attachment, between the content script and MAIN-world hook, or before the first fragment reaches background;
+- the previous popup restore path also overwrote stored capture-phase status with a generic `Downloading…` label, so UI alone could not distinguish those states.
+
+Follow-up on PR #22:
+
+- persist control-plane phases in the active download: `reload`, `frame-ready`, `hook-armed`, `first-fragment`, `capture`, and `finalizing`;
+- content reports the first MAIN-world `mse-capture-started` acknowledgement to background;
+- popup restore preserves and renders the stored capture phase instead of replacing it with generic download text.
+
+Status: third focused validation pending.
+## 2026-09-24 — Capture stalled before frame-ready due to stale iframe identity
+
+Third focused validation result:
+
+- last visible lifecycle phase: `Capture session ready — waiting for the reloaded player frame…`;
+- therefore no post-reload content frame was accepted by the background capture session.
+
+Confirmed code cause:
+
+- the session persisted the pre-reload MSE `sourceFrameId`;
+- `handleMseCaptureReady()` required the post-reload sender to match that old frame ID (or exact old frame URL);
+- subframe IDs are navigation-scoped and may change across reload, so the target iframe could be rejected even though its content script was running.
+
+Fix on PR #22:
+
+- post-reload content frames in the selected tab may temporarily arm as capture candidates;
+- the session no longer locks `activeFrameId` at READY time;
+- the first frame that actually delivers an MSE media chunk becomes the locked capture frame;
+- all other armed candidate frames are explicitly stopped after that first-fragment lock;
+- subsequent progress/finalization remains restricted to the locked frame.
+
+This preserves per-frame isolation without relying on stale pre-reload iframe IDs.
+
+Status: focused revalidation pending.
+## 2026-09-24 — First native spool write reached, sparse-chunk bug fixed
+
+Focused validation after frame relock:
+
+- reload proceeded into the native capture path far enough to surface a CoApp error:
+  `The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received undefined`;
+- this confirms post-reload frame arming, MAIN-world capture, fragment forwarding, background validation, and native RPC delivery all occurred.
+
+Confirmed CoApp defect:
+
+- a pending fragment used `new Array(chunkCount)`, creating a sparse array;
+- `Array.some()` skips unassigned sparse slots, so the fragment could be treated as complete after only one chunk arrived;
+- `flushTrack()` then iterated the holes and passed `undefined` to `fs.appendFileSync()`.
+
+Fix on PR #22:
+
+- each pending fragment now tracks an explicit `receivedCount`;
+- the chunk array is initialized with real `undefined` entries rather than holes;
+- a fragment flushes only when `receivedCount === chunkCount`;
+- flush also checks every indexed chunk and throws an explicit invariant error if completeness is violated.
+
+Status: CoApp rebuild/replacement and focused revalidation pending.
+## 2026-09-24 — Append-capture end-to-end validation passed
+
+After the native fragment-completeness fix, user validation completed successfully:
+
+- Download armed the capture and reloaded the selected tab once;
+- manual playback after reload proceeded normally;
+- MSE fragments were captured and spooled without the previous undefined-chunk error;
+- capture finalized and FFmpeg mux completed;
+- a playable output file was created successfully.
+
+Confirmed limitation of the current architecture:
+
+- MediaGrabber only receives post-transform fMP4 fragments when the page/player actually appends them to SourceBuffer;
+- therefore a complete file requires the player to load the full timeline;
+- on the tested player, the reliable method is playback from the beginning to the end;
+- seeking ahead is not considered a safe substitute because skipped intervals may never be appended.
+
+This is now a UX/performance limitation rather than a functional failure.
+## 2026-09-24 — Candidate: accelerate complete MSE capture with playbackRate
+
+Goal: reduce wall-clock capture time without changing fragment ordering or using timeline seeks.
+
+Experiment on `exp/mse-playback-rate-acceleration`:
+
+- base: validated PR #22 append-capture implementation;
+- only during an explicit active MSE capture, identify the HTMLMediaElement whose blob URL belongs to the captured MediaSource;
+- request `playbackRate = 8` and `defaultPlaybackRate = 8`;
+- do not auto-play or auto-seek;
+- report both requested and effective rates through the existing capture progress UI;
+- restore the element's original playback/defaultPlaybackRate on success, cancellation, error, or navigation.
+
+Why this is the first acceleration candidate:
+
+- chronological playback is preserved, so fMP4 fragment ordering and timestamps are not intentionally reordered;
+- the existing capture/mux pipeline remains unchanged;
+- the change is limited to the explicit download session and is reversible;
+- if the player rejects/resets the rate, the effective rate is observable rather than silently assumed.
+
+Acceptance:
+
+- ordinary playback before Download remains normal;
+- after reload and one manual Play action, popup shows an effective rate above 1×, ideally 8×;
+- capture bytes/fragments continue increasing without transport errors;
+- wall-clock completion is materially faster than media duration;
+- final output remains complete, playable, and synchronized;
+- playback rate returns to its original value after capture.
+
+If this fails, do not jump directly to arbitrary seeks. The next candidate should be coverage-aware sequential seeking, which requires fragment-time coverage tracking and likely ordered fragment indexing to avoid gaps/duplicates.
+## 2026-09-24 — First playback-rate acceleration validation
+
+Observation:
+
+- ordinary playback before capture remained normal;
+- MSE capture still worked and popup progress reached values such as `Capturing… 24.0 MB · 70 fragments`;
+- playback did not accelerate;
+- popup showed no requested/effective playback-rate state at all.
+
+Interpretation:
+
+- this does not show that the player rejected 8×;
+- the acceleration code never selected a target HTMLMediaElement, because its first implementation required the media element's `currentSrc/src` to match a blob URL associated with the captured MediaSource;
+- on this player, capture succeeds even though that exact DOM URL association is not exposed to the hook.
+
+Follow-up on PR #23:
+
+- retain exact blob matching as the preferred target;
+- only after at least one real MSE fragment has been captured, allow a fallback when the capture frame contains exactly one currently playing video element;
+- if no unique playing video exists, allow a unique playing media element as a secondary fallback;
+- report the target mode (`blob`, `playing-video`, or `playing-media`) together with requested/effective rate;
+- do not accelerate if the candidate is ambiguous.
+
+Status: focused revalidation pending.
+## 2026-09-24 — Playback-rate acceleration validation passed
+
+Second acceleration validation passed end-to-end:
+
+- ordinary playback before Download remained normal;
+- after capture reload and manual Play, the player accelerated successfully;
+- MSE capture continued while accelerated;
+- download completed successfully;
+- the final downloaded video was normal/playable.
+
+Confirmed outcome:
+
+- chronological playback-rate acceleration is a viable way to reduce wall-clock MSE capture time on the tested player;
+- the unique-playing-video fallback successfully identified the target where exact captured-blob matching did not;
+- arbitrary seeking is not needed for this tested transport and remains a higher-risk fallback because it can skip fragments;
+- acceleration stays scoped to explicit capture sessions and is restored afterward.
+
+Decision candidate promoted to confirmed: prefer reversible chronological playback-rate acceleration before any seek-based acceleration strategy.
+## 2026-09-24 — Accelerated capture cancellation validation passed
+
+User validation of Cancel during an active accelerated MSE capture passed:
+
+- pressing Cancel stopped capture immediately;
+- the player remained usable and continued normal playback behavior;
+- playback rate returned from the capture acceleration to the original rate;
+- no player regression was observed after cancellation.
+
+This confirms the explicit cancellation path correctly restores player-visible playback state while terminating the active capture session.
+
+Remaining manual acceptance: verify temporary native capture directories/files do not accumulate after success/cancel/error.
+## 2026-09-24 — Native capture temporary-file cleanup validation passed
+
+Manual filesystem validation after the accelerated-capture Cancel test:
+
+- PowerShell count of `%TEMP%\mediagrabber-mse-*` directories returned `0`;
+- no native MSE capture temporary directory remained after cancellation.
+
+Together with the successful-completion cleanup path already exercised during end-to-end download validation, this closes the manual temporary-spool cleanup acceptance for the tested workflow.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.

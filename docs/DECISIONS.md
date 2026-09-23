@@ -48,6 +48,50 @@ Consequences:
 - master HLS and ordinary audio/video HLS remain eligible;
 - classification is based on parsed segment roles rather than site-specific URL matching.
 
+## 2026-09-24 — Capture clear MSE appends only after explicit download
+
+Decision: when a player transforms opaque network responses into clear MSE fMP4 fragments and no safe URL reconstruction exists, MediaGrabber may capture the already-clear `SourceBuffer.appendBuffer()` inputs only during an explicit user-initiated download session.
+
+Evidence:
+
+- filename, Resource Timing size, timing-only, and ArrayBuffer-identity diagnostics could not safely associate source URLs to the audio/video SourceBuffers;
+- the tested player transformed 30 opaque XHR ArrayBuffers into 30 audio + 30 video fMP4 appends;
+- the tested path emitted no EME `encrypted` events or CENC markers.
+
+Design constraints:
+
+- ordinary detection must not retain append payloads;
+- capture begins only after the user presses Download and the page is reloaded so init fragments are included;
+- native `appendBuffer()` is called before MediaGrabber copies the fragment, preserving player timing as much as practical;
+- media fragments are chunked with bounded in-flight work and spooled immediately to temporary per-track CoApp files rather than accumulated in extension memory;
+- protected-media indicators abort the capture; DRM circumvention remains out of scope;
+- temporary capture files are cleaned after mux, cancellation, or host exit;
+- no cookies, authorization headers, keys, initData bytes, or signed request URLs are added to this capture path.
+
+Consequence: MSE download becomes a capture-and-mux workflow rather than URL replay for this transport class. Real-site compatibility must still be validated before merge.
+
+## 2026-09-24 — Prefer chronological playback-rate acceleration over seek-based capture
+
+Decision: for clear MSE append capture, accelerate the player chronologically with a bounded playbackRate request before considering timeline seeking.
+
+Evidence:
+
+- the validated append-capture path already depends on the player appending the full timeline in order;
+- 8× playback-rate acceleration completed successfully on the tested player;
+- capture continued normally while accelerated;
+- the final downloaded video was normal/playable;
+- exact blob-to-element matching was unavailable on this player, but a unique currently playing video in the locked capture frame was a safe enough fallback after the first captured fragment.
+
+Constraints:
+
+- acceleration is active only during an explicit capture session;
+- no automatic seek is used;
+- if the target media element is ambiguous, do not accelerate;
+- restore the original playback/defaultPlaybackRate when capture ends or is cancelled;
+- keep effective rate observable rather than assuming the player accepted the requested rate.
+
+Consequence: seek-based acceleration remains a fallback research direction only for transports where chronological playback-rate acceleration is ineffective.
+
 ## Inherited architecture decisions
 
 The current codebase already embodies these upstream choices:

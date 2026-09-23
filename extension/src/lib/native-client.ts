@@ -233,4 +233,43 @@ export class NativeClient {
   async cancelDownload(downloadId: number): Promise<void> { return this.call('downloads.cancel', downloadId); }
 
   async probe(input: string, json?: boolean, headers?: any[]): Promise<any> { return this.call('probe', input, json, headers); }
+
+  async mseCaptureStart(sessionId: string): Promise<void> {
+    await this.call('mseCapture.start', sessionId);
+  }
+
+  async mseCaptureAppend(
+    sessionId: string,
+    trackId: number,
+    mime: string,
+    fragmentIndex: number,
+    chunkIndex: number,
+    chunkCount: number,
+    base64: string
+  ): Promise<{ success: boolean; bytes?: number }> {
+    return this.call(
+      'mseCapture.append',
+      sessionId,
+      trackId,
+      mime,
+      fragmentIndex,
+      chunkIndex,
+      chunkCount,
+      base64
+    );
+  }
+
+  async mseCaptureFinish(sessionId: string): Promise<{
+    tracks: Array<{ id: number; mime: string; path: string; bytes: number }>;
+  }> {
+    return this.call('mseCapture.finish', sessionId);
+  }
+
+  async mseCaptureAbort(sessionId: string): Promise<void> {
+    await this.call('mseCapture.abort', sessionId);
+  }
+
+  async mseCaptureCleanup(sessionId: string): Promise<void> {
+    await this.call('mseCapture.cleanup', sessionId);
+  }
 }

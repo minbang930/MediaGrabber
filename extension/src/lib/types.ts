@@ -46,6 +46,8 @@ export interface VideoInfo {
   thumbnail?: string;
   duration?: number;
   fileSize?: number;
+  sourceFrameId?: number;
+  sourceFrameUrl?: string;
 }
 
 export interface DownloadProgress {

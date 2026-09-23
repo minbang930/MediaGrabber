@@ -28,7 +28,7 @@ Network-facing detection includes:
 Download routing is type-based:
 
 - HLS/DASH → FFmpeg through CoApp;
-- MSE → FFmpeg through CoApp using captured URLs/arguments;
+- MSE → explicit user-triggered post-transform capture on `fix/mse-append-capture`: clear SourceBuffer appends are chunked through the extension, spooled to temporary per-track files in CoApp, then muxed by FFmpeg;
 - yt-dlp entries → yt-dlp through CoApp;
 - direct media → CoApp HTTP downloader.
 
@@ -42,7 +42,7 @@ extension/src/content.ts:
 - builds MSE media candidates;
 - forwards media and page metadata to the background service worker.
 
-Its current "All Segments" MSE quality builds a list of multiple FFmpeg -i inputs. That behavior is under validation.
+For the new MSE capture path, it also performs the isolated-world bridge between MAIN-world append data and the background service worker. Capture is armed only after an explicit download request; ordinary detection does not retain media payload bytes.
 
 #### MAIN-world MSE instrumentation
 
@@ -56,7 +56,7 @@ It currently instruments:
 - URL.createObjectURL;
 - MediaSource and SourceBuffer APIs.
 
-It reports MSE state and original-to-relay URL mappings to content.ts using window.postMessage.
+It reports MSE state and original-to-relay URL mappings to content.ts using window.postMessage. On the append-capture branch, an explicit capture session additionally copies already-clear SourceBuffer append fragments only after the native append call has been forwarded, splits them into bounded chunks, and stops on EME/CENC indicators. During an active capture it may also request up to 8× chronological playback on the uniquely identified captured media element; no automatic seek is used, and the original playback rate is restored when capture ends.
 
 This layer is currently the highest compatibility-risk component because it mutates page-global APIs. The current compatibility patch removes XMLHttpRequest constructor replacement and per-instance event-property redefinition, while retaining a minimal prototype.open observer. The project requirement is to retain observability while preserving native page semantics.
 
@@ -78,7 +78,7 @@ The CoApp uses Chrome native messaging framing:
 - UTF-8 JSON payload;
 - bidirectional RPC request/reply conventions.
 
-The CoApp entry point registers modules for direct downloads, file operations, FFmpeg conversion/probing, and yt-dlp.
+The CoApp entry point registers modules for direct downloads, file operations, FFmpeg conversion/probing, yt-dlp, and—on the append-capture branch—an MSE spool module. That module accepts bounded base64 chunks over JSON RPC, writes them immediately to temporary per-track files in fragment order, and exposes only temporary track paths back to the background for final FFmpeg muxing.
 
 This boundary is important because the extension has browser/page context while the CoApp has filesystem/process capabilities. Compatibility fixes should deliberately choose what context crosses this boundary rather than copying browser state wholesale.
 

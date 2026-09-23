@@ -19,6 +19,15 @@ class MediaDetector {
   private metadataTimer: number | undefined;
   private pageUrl = window.location.href;
   private pageGeneration = 0;
+  private mseHookReady = false;
+  private mseCaptureSessionId: string | undefined;
+  private mseCaptureStarted = false;
+  private mseCaptureStartAttempts = 0;
+  private mseCaptureStartTimer: number | undefined;
+  private mseCapturePendingMessages = 0;
+  private mseCaptureTerminalMessage: any | undefined;
+  private readonly mseCaptureMaxPendingMessages = 64;
+  private mseCaptureFinished = false;
   private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
     totalBytes: 0,
     segmentUrls: []
@@ -27,6 +36,8 @@ class MediaDetector {
   constructor() {
     this.setupNavigationListener();
     this.setupMSEListener();
+    this.setupMseCaptureControlListener();
+    this.checkForArmedMseCapture();
     this.setupDOMObserver();
     this.scanExistingMedia();
     this.scheduleMetadataSend();
@@ -85,6 +96,113 @@ class MediaDetector {
       }
 
       switch (msg.type) {
+        case 'mse-hook-ready':
+          this.mseHookReady = true;
+          this.maybeStartMseCapture();
+          break;
+
+        case 'mse-capture-started':
+          if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
+            const firstAck = !this.mseCaptureStarted;
+            this.mseCaptureStarted = true;
+            if (this.mseCaptureStartTimer !== undefined) {
+              clearTimeout(this.mseCaptureStartTimer);
+              this.mseCaptureStartTimer = undefined;
+            }
+            if (firstAck) {
+              try {
+                chrome.runtime.sendMessage({
+                  type: 'MSE_CAPTURE_STARTED',
+                  sessionId: this.mseCaptureSessionId
+                }, () => { void chrome.runtime.lastError; });
+              } catch {}
+            }
+          }
+          break;
+
+        case 'mse-capture-chunk':
+          if (
+            this.mseCaptureSessionId &&
+            msg.sessionId === this.mseCaptureSessionId &&
+            Number.isInteger(msg.trackId) &&
+            Number.isInteger(msg.fragmentIndex) &&
+            Number.isInteger(msg.chunkIndex) &&
+            Number.isInteger(msg.chunkCount)
+          ) {
+            const candidate = msg.bytes;
+            const bytes = ArrayBuffer.isView(candidate)
+              ? new Uint8Array(candidate.buffer, candidate.byteOffset, candidate.byteLength)
+              : Object.prototype.toString.call(candidate) === '[object ArrayBuffer]'
+                ? new Uint8Array(candidate)
+                : undefined;
+            if (bytes) {
+              const base64 = this.bytesToBase64(bytes);
+              this.enqueueMseCaptureMessage({
+                type: 'MSE_CAPTURE_CHUNK',
+                sessionId: this.mseCaptureSessionId,
+                trackId: msg.trackId,
+                mime: String(msg.mime || ''),
+                fragmentIndex: msg.fragmentIndex,
+                chunkIndex: msg.chunkIndex,
+                chunkCount: msg.chunkCount,
+                base64
+              });
+            }
+          }
+          break;
+
+        case 'mse-capture-acceleration':
+          if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_ACCELERATION',
+              sessionId: this.mseCaptureSessionId,
+              requestedRate: Number(msg.requestedRate) || 1,
+              effectiveRate: Number(msg.effectiveRate) || 1,
+              targetMode: String(msg.targetMode || 'unknown')
+            });
+          }
+          break;
+
+        case 'mse-capture-progress':
+          if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_PROGRESS',
+              sessionId: this.mseCaptureSessionId,
+              bytes: Number(msg.bytes) || 0,
+              fragments: Number(msg.fragments) || 0
+            });
+          }
+          break;
+
+        case 'mse-capture-complete':
+          if (
+            this.mseCaptureSessionId &&
+            msg.sessionId === this.mseCaptureSessionId &&
+            !this.mseCaptureFinished
+          ) {
+            this.mseCaptureFinished = true;
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_FINISH',
+              sessionId: this.mseCaptureSessionId
+            });
+          }
+          break;
+
+        case 'mse-capture-error':
+          if (
+            this.mseCaptureSessionId &&
+            msg.sessionId === this.mseCaptureSessionId &&
+            !this.mseCaptureFinished
+          ) {
+            this.mseCaptureFinished = true;
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_ERROR',
+              sessionId: this.mseCaptureSessionId,
+              error: String(msg.error || 'MSE capture failed')
+            });
+          }
+          break;
+
         case 'source-buffer':
           this.mseState.blobUrl = msg.blobUrl;
           this.mseState.mimeType = msg.mimeType;
@@ -130,6 +248,161 @@ class MediaDetector {
           break;
       }
     });
+  }
+
+  private setupMseCaptureControlListener(): void {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (
+        message?.type === 'MSE_CAPTURE_STOP' &&
+        this.mseCaptureSessionId &&
+        message.sessionId === this.mseCaptureSessionId
+      ) {
+        window.postMessage({
+          source: 'MediaGrabber-Content',
+          type: 'mse-capture-stop',
+          sessionId: this.mseCaptureSessionId
+        }, '*');
+        this.mseCaptureFinished = true;
+        this.mseCaptureStarted = false;
+        if (this.mseCaptureStartTimer !== undefined) {
+          clearTimeout(this.mseCaptureStartTimer);
+          this.mseCaptureStartTimer = undefined;
+        }
+        sendResponse({ success: true });
+        return;
+      }
+    });
+  }
+
+  private checkForArmedMseCapture(): void {
+    try {
+      chrome.runtime.sendMessage({ type: 'MSE_CAPTURE_READY' }, (response) => {
+        void chrome.runtime.lastError;
+        if (response?.active && typeof response.sessionId === 'string') {
+          this.mseCaptureSessionId = response.sessionId;
+          this.mseCaptureFinished = false;
+          this.mseCaptureStarted = false;
+          this.mseCaptureStartAttempts = 0;
+          this.maybeStartMseCapture();
+        }
+      });
+    } catch {
+      // Extension context invalidated.
+    }
+  }
+
+  private maybeStartMseCapture(): void {
+    if (!this.mseCaptureSessionId || this.mseCaptureFinished || this.mseCaptureStarted) return;
+    if (!this.mseHookReady && this.mseCaptureStartAttempts === 0) {
+      // The MAIN-world hook may post its ready event before this listener exists.
+      // Continue with a bounded retry handshake instead of relying on ordering.
+    }
+
+    window.postMessage({
+      source: 'MediaGrabber-Content',
+      type: 'mse-capture-start',
+      sessionId: this.mseCaptureSessionId
+    }, '*');
+
+    this.mseCaptureStartAttempts++;
+    if (this.mseCaptureStartAttempts >= 40) return;
+    if (this.mseCaptureStartTimer !== undefined) clearTimeout(this.mseCaptureStartTimer);
+    this.mseCaptureStartTimer = window.setTimeout(() => {
+      this.mseCaptureStartTimer = undefined;
+      this.maybeStartMseCapture();
+    }, 100);
+  }
+
+  private bytesToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const stride = 0x8000;
+    for (let i = 0; i < bytes.length; i += stride) {
+      binary += String.fromCharCode(...bytes.subarray(i, Math.min(bytes.length, i + stride)));
+    }
+    return btoa(binary);
+  }
+
+  private sendMseCaptureMessage(message: any): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError) {
+            reject(new Error(lastError.message));
+            return;
+          }
+          if (response?.error) {
+            reject(new Error(String(response.error)));
+            return;
+          }
+          resolve();
+        });
+      } catch (error: any) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
+  private queueMseCaptureTerminal(message: any): void {
+    if (
+      !this.mseCaptureTerminalMessage ||
+      message?.type === 'MSE_CAPTURE_ERROR'
+    ) {
+      this.mseCaptureTerminalMessage = message;
+    }
+    this.flushMseCaptureTerminal();
+  }
+
+  private flushMseCaptureTerminal(): void {
+    if (this.mseCapturePendingMessages !== 0 || !this.mseCaptureTerminalMessage) return;
+    const message = this.mseCaptureTerminalMessage;
+    this.mseCaptureTerminalMessage = undefined;
+    void this.sendMseCaptureMessage(message).catch((error) => {
+      console.error('[MediaGrabber] MSE capture terminal message failed:', error);
+    });
+  }
+
+  private failMseCaptureTransport(error: Error): void {
+    if (!this.mseCaptureSessionId || this.mseCaptureFinished) return;
+    this.mseCaptureFinished = true;
+    window.postMessage({
+      source: 'MediaGrabber-Content',
+      type: 'mse-capture-stop',
+      sessionId: this.mseCaptureSessionId
+    }, '*');
+    this.queueMseCaptureTerminal({
+      type: 'MSE_CAPTURE_ERROR',
+      sessionId: this.mseCaptureSessionId,
+      error: error.message
+    });
+  }
+
+  private enqueueMseCaptureMessage(message: any): void {
+    const terminal = message?.type === 'MSE_CAPTURE_FINISH' || message?.type === 'MSE_CAPTURE_ERROR';
+    if (terminal) {
+      this.queueMseCaptureTerminal(message);
+      return;
+    }
+
+    if (
+      message?.type === 'MSE_CAPTURE_CHUNK' &&
+      this.mseCapturePendingMessages >= this.mseCaptureMaxPendingMessages
+    ) {
+      this.failMseCaptureTransport(new Error('MSE capture transport could not keep up with playback.'));
+      return;
+    }
+
+    this.mseCapturePendingMessages++;
+    void this.sendMseCaptureMessage(message)
+      .catch((error) => {
+        this.failMseCaptureTransport(
+          error instanceof Error ? error : new Error(String(error))
+        );
+      })
+      .finally(() => {
+        this.mseCapturePendingMessages = Math.max(0, this.mseCapturePendingMessages - 1);
+        this.flushMseCaptureTerminal();
+      });
   }
 
   private sendMSEToBackground(): void {

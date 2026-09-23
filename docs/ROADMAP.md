@@ -4,15 +4,13 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/filter-image-hls`: image-only HLS should disappear while the real MSE candidate remains visible and playback stays normal.
-- Test the surfaced MSE candidate for full-video download.
-- If MSE download is partial, replace the current multiple-independent-input assembly with an ordered reconstruction/mux strategy based on the confirmed fragment format.
+- PR #22 deterministic MSE tests and Windows/Node 22 CI are green; perform final diff/status review and merge.
+- Keep the validated 8× playback-rate acceleration as the preferred MSE capture UX; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
 
-- Add deterministic tests for HLS/DASH parsing, URL mapping, filename/argument construction, and stream-grouping logic.
-- Add a PR/push CI workflow that at minimum runs install/build verification.
+- Expand deterministic tests beyond the new MSE fragment/session coverage to HLS/DASH parsing, URL mapping, filename/argument construction, and stream-grouping logic.
 - Replace mixed-language user-facing FFmpeg errors with consistent localized or English messages.
 - Improve diagnostics so detected, downloadable, expired URL, missing request context, and DRM/protected failures are distinguishable.
 - Define and implement a safe request-context model if the 404 investigation confirms it is required.

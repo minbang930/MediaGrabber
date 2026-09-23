@@ -14,17 +14,15 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 fixed the player regression and PR #6 merged the DOM-source-noise fix, reducing the popup from 14 entries to 1. Diagnostics through PR #14 then showed that the remaining visible HLS is an image-only playlist (`image:1118`) while a real `mse` candidate is hidden. PR #8 was closed without merge because its FFmpeg HLS tuning targeted that wrong image playlist. PR #15 (`fix/filter-image-hls`) passed manual validation: playback remained normal and the MSE candidate surfaced; its download still fails in FFmpeg and is the next focus.
+PR #15 surfaced the real MSE candidate while preserving playback. Diagnostics #16-#21 then showed that this player transforms opaque XHR data into separate clear audio/video fMP4 SourceBuffers, with no reliable URL replay path and no observed EME/CENC protection. Draft PR #22 (`fix/mse-append-capture`) implements an explicit user-triggered reload/capture/native-spool/mux workflow. First real-site validation confirmed the one-time reload but did not finalize an output; it also exposed a cross-tab popup broadcast bug. User validation confirmed tab scoping. Lifecycle instrumentation then showed the capture stalled at `reload`, before `frame-ready`. The cause was stale pre-reload iframe identity. PR #22 now treats post-reload frames in the selected tab as temporary candidates and locks capture to the first frame that actually emits an MSE media fragment. After fixing the native sparse-array spool bug, user validation succeeded end-to-end: reload, manual playback, fragment capture, mux, and final file creation all worked. The remaining UX limitation is that complete capture depends on the player appending the whole timeline. PR #23 playback-rate acceleration passed real-site validation and has been merged into PR #22's branch: 8× playback engaged during capture, download completed, and the final video was normal. Chronological playback-rate acceleration is now the preferred UX improvement over seek-based acceleration for this transport.
 
 A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Build/load `fix/filter-image-hls` and confirm playback remains normal.
-2. Confirm the popup now shows the MSE candidate instead of the image-only HLS entry.
-3. Attempt the MSE download and record whether it produces the full video or only partial fragments; this determines the next reconstruction fix.
-4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
-5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
+1. Review PR #22's complete diff/status and merge to `main` if clean; the new Windows/Node 22 CI is green.
+2. Verify latest `main` and the post-merge CI run.
+3. Return to the separate direct-download HTTP 404 and determine the minimal safe request context required.
 
 ## Start here
 
@@ -33,7 +31,8 @@ Read:
 - extension/src/mse-inject.ts
 - extension/src/content.ts
 - extension/src/background.ts around startDownload(), HLS rewriting, and direct download
-- coapp/src/downloads.ts
+- coapp/src/mse-capture.ts
+- coapp/src/converter.ts
 - docs/EXPERIMENTS.md
 
 Verification baseline:

@@ -29,6 +29,8 @@ interface VideoInfo {
   thumbnail?: string;
   duration?: number;
   fileSize?: number;
+  sourceFrameId?: number;
+  sourceFrameUrl?: string;
 }
 
 interface QualityOption {
@@ -70,7 +72,7 @@ function initPopup(): void {
         break;
       case 'DOWNLOAD_STARTED':
         if (msg.success) {
-          showDownloadStarted(msg.downloadId);
+          showDownloadStarted(msg.downloadId, Boolean(msg.capture));
         } else {
           showError(msg.error || 'Download failed');
         }
@@ -624,14 +626,22 @@ function restoreDownloadUI(downloadId: string, filename: string, progress: any):
     filenameEl.textContent = filename;
   }
 
-  updateProgressUI(progress || { percent: 0 });
-  updateStatus('Downloading…', 'info');
+  const restoredProgress = progress || { percent: 0 };
+  updateProgressUI(restoredProgress);
+  if (!restoredProgress?.capture) {
+    updateStatus('Downloading…', 'info');
+  }
   document.getElementById('cancel-btn')?.focus();
 }
 
-function showDownloadStarted(downloadId: string): void {
+function showDownloadStarted(downloadId: string, capture = false): void {
   currentDownloadId = downloadId;
-  updateStatus('Download started…', 'info');
+  updateStatus(
+    capture
+      ? 'Capture session created — reloading page…'
+      : 'Download started…',
+    'info'
+  );
 }
 
 function updateProgressUI(progress: any): void {
@@ -639,6 +649,37 @@ function updateProgressUI(progress: any): void {
   const percentEl = document.getElementById('progress-percent');
   const speedEl = document.getElementById('progress-speed');
   const etaEl = document.getElementById('progress-eta');
+
+  if (progress?.capture) {
+    switch (progress.phase) {
+      case 'reload':
+        updateStatus('Capture session ready — waiting for the reloaded player frame…', 'info');
+        break;
+      case 'frame-ready':
+        updateStatus('Player frame connected — waiting for the MAIN-world capture hook…', 'info');
+        break;
+      case 'hook-armed':
+        updateStatus('Capture hook armed — start playback from the beginning.', 'info');
+        break;
+      case 'first-fragment':
+        updateStatus('First media fragment captured — capture is active.', 'info');
+        break;
+      case 'capture': {
+        const captured = typeof progress.bytesReceived === 'number' && progress.bytesReceived > 0
+          ? formatFileSize(progress.bytesReceived)
+          : '0 B';
+        const fragments = typeof progress.fragments === 'number' ? progress.fragments : 0;
+        const effectiveRate = typeof progress.effectiveRate === 'number' ? progress.effectiveRate : 0;
+        const rateSuffix = effectiveRate > 1 ? ` · ${effectiveRate.toFixed(1)}×` : '';
+        const targetSuffix = progress.targetMode ? ` · target=${progress.targetMode}` : '';
+        updateStatus(`Capturing… ${captured} · ${fragments} fragments${rateSuffix}${targetSuffix}`, 'info');
+        break;
+      }
+      case 'finalizing':
+        updateStatus('Capture complete — finalizing MP4…', 'info');
+        break;
+    }
+  }
 
   if (speedEl) speedEl.textContent = '';
   if (etaEl) etaEl.textContent = '';
@@ -659,7 +700,10 @@ function updateProgressUI(progress: any): void {
       fill.classList.add('indeterminate');
       fill.style.width = '35%';
       fill.removeAttribute('aria-valuenow');
-      fill.setAttribute('aria-valuetext', 'Downloading…');
+      fill.setAttribute(
+        'aria-valuetext',
+        progress?.capture ? 'Capturing media…' : 'Downloading…'
+      );
     }
   }
 
@@ -684,6 +728,27 @@ function updateProgressUI(progress: any): void {
     const mbReceived = (progress.bytesReceived / 1000000).toFixed(1);
     const mbTotal = (progress.totalBytes / 1000000).toFixed(1);
     speedEl.textContent = `${mbReceived} / ${mbTotal} MB`;
+  } else if (
+    speedEl &&
+    progress?.capture &&
+    typeof progress.bytesReceived === 'number' &&
+    progress.bytesReceived > 0
+  ) {
+    speedEl.textContent = `Captured ${formatFileSize(progress.bytesReceived)}`;
+  }
+
+  if (
+    speedEl &&
+    progress?.capture &&
+    typeof progress.effectiveRate === 'number' &&
+    typeof progress.requestedRate === 'number'
+  ) {
+    const effective = progress.effectiveRate.toFixed(1);
+    const requested = progress.requestedRate.toFixed(1);
+    const target = progress.targetMode ? ` · target=${progress.targetMode}` : '';
+    speedEl.textContent = progress.effectiveRate === progress.requestedRate
+      ? `Playback: ${effective}×${target}`
+      : `Playback: ${effective}× (requested ${requested}×)${target}`;
   }
 
   if (etaEl && progress.eta) {
