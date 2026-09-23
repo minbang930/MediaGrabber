@@ -100,8 +100,7 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- Which exact part of the XHR/MSE hook breaks the tested player?
-- What transport pattern produces the roughly 14 detected fragment entries when MAIN-world MSE hooking is disabled?
-- Does that site expose a recoverable HLS/DASH manifest, or does it require reliable MSE fragment reconstruction?
+- After image-only HLS filtering, does the real MSE candidate become the sole visible media entry while playback stays normal?
+- Can the current MSE `All Segments` path reconstruct the full video, or does it need ordered fragment concatenation/muxing?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
