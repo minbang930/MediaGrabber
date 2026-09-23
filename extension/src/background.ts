@@ -28,6 +28,23 @@ const currentPageUrlByTab = new Map<number, string | null>();
 const relayMappingsByTab = new Map<number, Map<string, string>>();
 const relayCodecsByTab = new Map<number, Map<string, RelayCodec>>();
 
+type HlsDiagnosticTargetKind = 'segment' | 'key';
+
+interface HlsResponseSummary {
+  seen: number;
+  statuses: Record<string, number>;
+  contentTypes: Record<string, number>;
+  sizeBuckets: Record<string, number>;
+}
+
+interface HlsBrowserResponseSummary {
+  segment: HlsResponseSummary;
+  key: HlsResponseSummary;
+}
+
+const hlsDiagnosticTargetsByTab = new Map<number, Map<string, HlsDiagnosticTargetKind>>();
+const hlsBrowserResponsesByTab = new Map<number, HlsBrowserResponseSummary>();
+
 interface RelayCodec {
   hour: number;
   prefix: string;
@@ -49,6 +66,8 @@ function resetTabState(tabId: number): void {
   ytdlpFormatUrlByTab.delete(tabId);
   relayMappingsByTab.delete(tabId);
   relayCodecsByTab.delete(tabId);
+  hlsDiagnosticTargetsByTab.delete(tabId);
+  hlsBrowserResponsesByTab.delete(tabId);
   chrome.action.setBadgeText({ tabId, text: '' }, () => { void chrome.runtime.lastError; });
 }
 
@@ -303,6 +322,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
     if (details.tabId < 0) return;
+    observeHlsDiagnosticResponse(details);
     if (details.statusCode < 200 || details.statusCode >= 300) return;
 
     const type = getMediaTypeFromContentType(getContentType(details.responseHeaders));
@@ -318,6 +338,121 @@ function getContentType(headers?: chrome.webRequest.HttpHeader[]): string {
   const header = headers?.find((item) => item.name.toLowerCase() === 'content-type');
   return (header?.value || '').split(';', 1)[0].trim().toLowerCase();
 }
+function createHlsResponseSummary(): HlsResponseSummary {
+  return { seen: 0, statuses: {}, contentTypes: {}, sizeBuckets: {} };
+}
+
+function incrementDiagnosticCount(target: Record<string, number>, key: string): void {
+  target[key] = (target[key] || 0) + 1;
+}
+
+function getContentLength(headers?: chrome.webRequest.HttpHeader[]): number | undefined {
+  const value = headers?.find((item) => item.name.toLowerCase() === 'content-length')?.value;
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+function bucketContentLength(length?: number): string {
+  if (length === undefined) return 'unknown';
+  if (length === 0) return 'zero';
+  if (length < 1024) return '<1k';
+  if (length < 64 * 1024) return '1k-64k';
+  if (length < 1024 * 1024) return '64k-1m';
+  return '>=1m';
+}
+
+function sanitizeDiagnosticContentType(contentType: string): string {
+  if (!contentType) return 'missing';
+  return /^[a-z0-9!#function getContentType(headers?: chrome.webRequest.HttpHeader[]): string {
+  const header = headers?.find((item) => item.name.toLowerCase() === 'content-type');
+  return (header?.value || '').split(';', 1)[0].trim().toLowerCase();
+}
+^_.+\-]+\/[a-z0-9!#function getContentType(headers?: chrome.webRequest.HttpHeader[]): string {
+  const header = headers?.find((item) => item.name.toLowerCase() === 'content-type');
+  return (header?.value || '').split(';', 1)[0].trim().toLowerCase();
+}
+^_.+\-]+$/i.test(contentType)
+    ? contentType.toLowerCase()
+    : 'other';
+}
+
+function observeHlsDiagnosticResponse(details: chrome.webRequest.WebResponseHeadersDetails): void {
+  if (details.tabId < 0) return;
+  const kind = hlsDiagnosticTargetsByTab.get(details.tabId)?.get(details.url);
+  if (!kind) return;
+
+  let summary = hlsBrowserResponsesByTab.get(details.tabId);
+  if (!summary) {
+    summary = { segment: createHlsResponseSummary(), key: createHlsResponseSummary() };
+    hlsBrowserResponsesByTab.set(details.tabId, summary);
+  }
+
+  const bucket = summary[kind];
+  bucket.seen += 1;
+  incrementDiagnosticCount(bucket.statuses, String(details.statusCode));
+  incrementDiagnosticCount(bucket.contentTypes, sanitizeDiagnosticContentType(getContentType(details.responseHeaders)));
+  incrementDiagnosticCount(bucket.sizeBuckets, bucketContentLength(getContentLength(details.responseHeaders)));
+}
+
+function registerHlsDiagnosticTargets(tabId: number, manifestUrl: string, parsed: Awaited<ReturnType<typeof M3U8ParserWrapper.fetchAndParse>>): void {
+  const targets = hlsDiagnosticTargetsByTab.get(tabId) || new Map<string, HlsDiagnosticTargetKind>();
+
+  for (const segmentUrl of (parsed.segments || []).slice(0, 256)) {
+    targets.set(segmentUrl, 'segment');
+  }
+
+  if (parsed.manifest) {
+    const baseUrl = parsed.manifestUrl || manifestUrl;
+    let keyCount = 0;
+    for (const line of parsed.manifest.split(/\r?\n/)) {
+      if (!line.trim().startsWith('#EXT-X-KEY:')) continue;
+      const keyUri = line.match(/URI="([^"]+)"/i)?.[1];
+      if (!keyUri) continue;
+      try {
+        const resolved = new URL(keyUri, baseUrl);
+        if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') continue;
+        targets.set(resolved.href, 'key');
+        keyCount += 1;
+        if (keyCount >= 16) break;
+      } catch {
+        // Ignore malformed diagnostic-only key URLs.
+      }
+    }
+  }
+
+  hlsDiagnosticTargetsByTab.set(tabId, targets);
+  if (!hlsBrowserResponsesByTab.has(tabId)) {
+    hlsBrowserResponsesByTab.set(tabId, {
+      segment: createHlsResponseSummary(),
+      key: createHlsResponseSummary()
+    });
+  }
+}
+
+function formatDiagnosticRecord(record: Record<string, number>): string {
+  const entries = Object.entries(record)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 6);
+  return entries.length > 0 ? entries.map(([key, count]) => `${key}:${count}`).join(',') : 'none';
+}
+
+function formatHlsBrowserResponses(tabId: number): string {
+  const summary = hlsBrowserResponsesByTab.get(tabId);
+  if (!summary) return 'segmentSeen=0 keySeen=0';
+
+  return [
+    `segmentSeen=${summary.segment.seen}`,
+    `segmentStatus=${formatDiagnosticRecord(summary.segment.statuses)}`,
+    `segmentType=${formatDiagnosticRecord(summary.segment.contentTypes)}`,
+    `segmentSize=${formatDiagnosticRecord(summary.segment.sizeBuckets)}`,
+    `keySeen=${summary.key.seen}`,
+    `keyStatus=${formatDiagnosticRecord(summary.key.statuses)}`,
+    `keyType=${formatDiagnosticRecord(summary.key.contentTypes)}`,
+    `keySize=${formatDiagnosticRecord(summary.key.sizeBuckets)}`
+  ].join(' ');
+}
+
 
 function getMediaTypeFromContentType(contentType: string): VideoInfo['type'] | undefined {
   if (
@@ -542,6 +677,7 @@ async function handleInterceptedMedia(
   if (type === 'hls') {
     try {
       const parsed = await M3U8ParserWrapper.fetchAndParse(url, referer);
+      registerHlsDiagnosticTargets(tabId, url, parsed);
       duration = parsed.duration;
       childUrls = parsed.childUrls;
 
@@ -956,7 +1092,11 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       } else {
         notify('Download failed', outFilename);
         popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: formatFfmpegError(result.exitCode, result.stderr) });
+          const baseError = formatFfmpegError(result.exitCode, result.stderr);
+          const error = type === 'hls'
+            ? `${baseError}\nBrowser HLS responses: ${formatHlsBrowserResponses(tabId ?? -1)}`
+            : baseError;
+          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error });
         });
       }
       activeDownloads.delete(downloadKey);
