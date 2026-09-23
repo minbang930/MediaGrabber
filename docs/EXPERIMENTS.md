@@ -363,6 +363,14 @@ User validation of Cancel during an active accelerated MSE capture passed:
 This confirms the explicit cancellation path correctly restores player-visible playback state while terminating the active capture session.
 
 Remaining manual acceptance: verify temporary native capture directories/files do not accumulate after success/cancel/error.
+## 2026-09-24 — Native capture temporary-file cleanup validation passed
+
+Manual filesystem validation after the accelerated-capture Cancel test:
+
+- PowerShell count of `%TEMP%\mediagrabber-mse-*` directories returned `0`;
+- no native MSE capture temporary directory remained after cancellation.
+
+Together with the successful-completion cleanup path already exercised during end-to-end download validation, this closes the manual temporary-spool cleanup acceptance for the tested workflow.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
