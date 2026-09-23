@@ -11,7 +11,7 @@ Last reviewed: 2026-09-24
 - Upstream main was at the same SHA when checked on 2026-09-23.
 - Package and manifest version: 1.1.1.
 - No open PRs existed in the fork at bootstrap time.
-- Current `main` after PR #28: `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
+- PR #28 feature merge commit: `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
 
 ## Implemented runtime
 
