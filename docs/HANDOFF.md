@@ -14,23 +14,27 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #22 remains the validated transformed-XHR MSE capture baseline: one reload, clear SourceBuffer append capture, native ordered spooling, FFmpeg muxing, up to 8× chronological playback acceleration, cancellation/rate restoration, DRM guards, and cleanup.
+PR #28 has completed manual acceptance for MSE background keep-alive. The validated flow is now: explicit clear-SourceBuffer capture + up to 8× chronological playback + video-only Chrome `tabCapture` held by a hidden offscreen extension document.
 
-The current UX problem is Windows occlusion/backgrounding. PR #25 detached-window capture stalled when fully covered. PR #26 real-video PiP kept capture progressing under other tabs/apps. PR #27 (closed without merge) synthetic helper PiP also kept capture progressing, but Chrome still displayed a normal visible PiP window, so it did not satisfy the desired "keep running without a visible PiP" UX.
+Manual validation passed for:
 
-Draft PR #28 (`exp/mse-tab-capture-keepalive`) is the next experiment. It starts a video-only Chrome tab capture before the MSE reload and consumes it in a hidden offscreen extension document. Chromium has an explicit Windows `CapturesWhenOccluded` WebContents-capture browser test, making this a targeted experiment rather than a generic visibility spoof. The captured pixels are not used; the existing SourceBuffer/CoApp pipeline remains authoritative.
+- no MediaGrabber PiP requirement;
+- capture continuing after switching to another browser tab;
+- capture continuing while another maximized application fully covers the browser window;
+- successful completion ending the Chrome capture/share indicator;
+- Cancel ending the capture/share indicator, restoring the original playback rate, and leaving the player usable.
 
-The separate direct-download HTTP 404 remains unresolved and follows this focused MSE UX experiment.
+PR #28 also passed the Windows/Node 22 build/test/package CI before final cleanup. The test-only PR28 name/version/popup markers have been removed; final CI/merge verification is the remaining repository step.
+
+The next compatibility problem after this merge is the separate direct-download HTTP 404. Its exact cause remains unproven; request-context propagation remains a candidate, not a conclusion.
 
 ## Next actions
 
-1. CI has passed for the code change on Windows/Node 22: install, full build, CoApp tests, and extension package smoke check.
-2. Rebuild PR #28 after deleting `extension/dist`, then load the extension and verify the UI says `MediaGrabber [tabCapture test]` / `[PR28 tabCapture]`. CoApp replacement should not be needed.
-3. Manual validation has passed for another-browser-tab backgrounding: the PR #28 marker was visible, Chrome showed the tab-capture/share indicator, no MediaGrabber PiP was needed, and MSE capture continued after switching tabs.
-4. Full native-window occlusion has now passed: another maximized application can completely cover the browser and MSE capture still progresses.
-5. Final manual acceptance: test Cancel and successful completion; confirm playback rate restores and the tab-capture state/indicator ends.
-6. If tabCapture does not prevent the stall, keep PR #26 real-video PiP as the known working fallback and investigate Chromium scheduling/occlusion constraints before any invasive visibility/focus spoofing.
-7. Then return to the direct-download HTTP 404 investigation.
+1. Confirm final PR #28 CI after removal of diagnostic build markers and documentation finalization.
+2. Review the final diff, mark the PR ready, merge it, and verify latest `main`.
+3. Close the superseded real-video PiP draft PR #26 after PR #28 is merged.
+4. Return to the direct-download HTTP 404 investigation from current `main`, testing URL freshness/provenance before adding browser request context.
+5. If request context is proven necessary, propagate only the minimum non-sensitive values required; do not copy cookies, authorization tokens, or broad browser headers by default.
 
 ## Start here
 
