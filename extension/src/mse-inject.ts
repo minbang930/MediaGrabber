@@ -20,6 +20,18 @@
   let pageGeneration = 0;
   const mediaSourceGenerations = new WeakMap<MediaSource, number>();
   const sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  const sourceBufferDiagnosticIds = new WeakMap<SourceBuffer, number>();
+  const sourceBufferDiagnostics = new Map<number, {
+    id: number;
+    mime: string;
+    appends: number;
+    boxes: Record<string, number>;
+    recentHits: number;
+    exactHits: number;
+    nearHits: number;
+    initiators: Record<string, number>;
+  }>();
+  let nextSourceBufferDiagnosticId = 1;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -39,6 +51,111 @@
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
     MSE_STATE.duration = 0;
+    sourceBufferDiagnostics.clear();
+    nextSourceBufferDiagnosticId = 1;
+  }
+
+  function getAppendView(data: any): Uint8Array | undefined {
+    try {
+      if (data instanceof ArrayBuffer) {
+        return new Uint8Array(data);
+      }
+      if (ArrayBuffer.isView(data)) {
+        return new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+      }
+    } catch {}
+    return undefined;
+  }
+
+  function classifyAppendSignature(view: Uint8Array | undefined): string {
+    if (!view || view.byteLength < 4) return 'short';
+
+    if (
+      view[0] === 0x1a && view[1] === 0x45 &&
+      view[2] === 0xdf && view[3] === 0xa3
+    ) return 'ebml';
+
+    if (
+      view[0] === 0x1f && view[1] === 0x43 &&
+      view[2] === 0xb6 && view[3] === 0x75
+    ) return 'cluster';
+
+    if (view.byteLength >= 8) {
+      const box = String.fromCharCode(view[4], view[5], view[6], view[7]).toLowerCase();
+      if (/^(ftyp|moov|moof|mdat|styp|sidx|free)$/.test(box)) return box;
+    }
+
+    return 'other';
+  }
+
+  function observeRecentResourceMatch(byteLength: number): {
+    recent: boolean;
+    exact: boolean;
+    near: boolean;
+    initiator: string;
+  } {
+    const now = performance.now();
+    const recent = (performance.getEntriesByType('resource') as PerformanceResourceTiming[])
+      .filter((entry) => {
+        const age = now - entry.responseEnd;
+        if (age < -20 || age > 1500) return false;
+        try {
+          return /^https?:$/.test(new URL(entry.name, window.location.href).protocol);
+        } catch {
+          return false;
+        }
+      });
+
+    if (recent.length === 0) {
+      return { recent: false, exact: false, near: false, initiator: 'none' };
+    }
+
+    let exact = false;
+    let near = false;
+    let bestEntry = recent[0];
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (const entry of recent) {
+      const sizes = [entry.decodedBodySize, entry.encodedBodySize, entry.transferSize]
+        .filter((value) => Number.isFinite(value) && value > 0);
+      for (const size of sizes) {
+        const diff = Math.abs(size - byteLength);
+        const ratio = byteLength > 0 ? diff / byteLength : 1;
+        if (diff === 0) exact = true;
+        if (ratio <= 0.05 || diff <= 1024) near = true;
+
+        const score = diff + Math.max(0, now - entry.responseEnd);
+        if (score < bestScore) {
+          bestScore = score;
+          bestEntry = entry;
+        }
+      }
+    }
+
+    if (!Number.isFinite(bestScore)) {
+      bestEntry = recent
+        .slice()
+        .sort((a, b) => Math.abs(now - a.responseEnd) - Math.abs(now - b.responseEnd))[0];
+    }
+
+    const initiator = bestEntry.initiatorType || 'unknown';
+    return { recent: true, exact, near, initiator };
+  }
+
+  function postCaptureDiagnostic(generation = pageGeneration): void {
+    postToContentScript({
+      type: 'capture-diagnostic',
+      buffers: Array.from(sourceBufferDiagnostics.values()).map((state) => ({
+        id: state.id,
+        mime: state.mime,
+        appends: state.appends,
+        boxes: state.boxes,
+        recentHits: state.recentHits,
+        exactHits: state.exactHits,
+        nearHits: state.nearHits,
+        initiators: state.initiators
+      }))
+    }, generation);
   }
 
   function notifyNavigation(): void {
@@ -155,6 +272,23 @@
     }
     const sourceBuffer = origAddSourceBuffer.call(this, mimeType);
     sourceBufferGenerations.set(sourceBuffer, generation);
+
+    if (isVideoMime(mimeType) && generation === pageGeneration) {
+      const id = nextSourceBufferDiagnosticId++;
+      sourceBufferDiagnosticIds.set(sourceBuffer, id);
+      sourceBufferDiagnostics.set(id, {
+        id,
+        mime: mimeType.split(';', 1)[0].trim().toLowerCase(),
+        appends: 0,
+        boxes: {},
+        recentHits: 0,
+        exactHits: 0,
+        nearHits: 0,
+        initiators: {}
+      });
+      postCaptureDiagnostic(generation);
+    }
+
     return sourceBuffer;
   };
 
@@ -171,6 +305,26 @@
       }
 
       MSE_STATE.segmentCount++;
+
+      const diagnosticId = sourceBufferDiagnosticIds.get(this);
+      const diagnostic = diagnosticId ? sourceBufferDiagnostics.get(diagnosticId) : undefined;
+      if (diagnostic) {
+        const view = getAppendView(data);
+        const byteLength = view?.byteLength || 0;
+        const signature = classifyAppendSignature(view);
+        const resource = observeRecentResourceMatch(byteLength);
+
+        diagnostic.appends++;
+        diagnostic.boxes[signature] = (diagnostic.boxes[signature] || 0) + 1;
+        if (resource.recent) diagnostic.recentHits++;
+        if (resource.exact) diagnostic.exactHits++;
+        if (resource.near) diagnostic.nearHits++;
+        diagnostic.initiators[resource.initiator] = (diagnostic.initiators[resource.initiator] || 0) + 1;
+
+        if (diagnostic.appends === 1 || diagnostic.appends % 10 === 0) {
+          postCaptureDiagnostic(generation);
+        }
+      }
 
       if (MSE_STATE.segmentCount === 1) {
         postToContentScript({
