@@ -14,7 +14,7 @@ Last updated: 2026-09-23
 
 ## Current focus
 
-The immediate engineering problem is the tested site where stock mse-inject.js prevents video playback. Branch `fix/minimize-xhr-hook` now removes the invasive XMLHttpRequest constructor/event-property wrapping while keeping MSE observation. The next required result is a real-site playback test with this branch enabled. Removing the injector entirely remains diagnostic only because that exposes many fragment-like entries and partial downloads.
+The immediate engineering problem is the tested site where stock mse-inject.js prevents video playback. Draft PR #3 (`fix/minimize-xhr-hook`) now removes the invasive XMLHttpRequest constructor/event-property wrapping while keeping MSE observation. The next required result is a real-site playback test with this branch enabled. Removing the injector entirely remains diagnostic only because that exposes many fragment-like entries and partial downloads.
 
 A separate direct-download test currently fails with HTTP 404.
 
