@@ -406,6 +406,44 @@ Why PiP is a better next experiment:
 Open question:
 
 - whether keeping the video in standard PiP is enough for this transformed-XHR player to continue its JavaScript/XHR/MSE production while the source tab is backgrounded. Real-site validation is required.
+## 2026-09-24 — Real-video PiP keeps background capture alive; test minimal helper PiP
+
+Validation of PR #26 (real captured video in standard PiP):
+
+- PiP opened successfully from the post-reload user Play interaction;
+- switching to other tabs/apps no longer stopped capture;
+- MSE fragment capture continued and the download completed successfully.
+
+Confirmed interpretation:
+
+- standard real-video PiP is sufficient to avoid the tested occlusion/background stall;
+- unlike the detached normal-window experiment, the PiP surface remains usable while other applications are maximized;
+- this establishes a working background-capture baseline.
+
+Remaining UX question:
+
+- whether the actual captured video must be the PiP source, or whether any PiP-active video in the same document is enough to keep the page/player producer active.
+
+Helper-PiP experiment on `exp/mse-helper-pip-capture`:
+
+- base: validated PR #26;
+- pre-create a synthetic 320×40 black canvas stream at 1 fps and feed it to a hidden helper video;
+- on the user's post-reload Play click, request PiP for the helper video only;
+- do not fall back to the real video PiP if helper PiP fails;
+- leave the real MSE player in-page and keep its validated 8× chronological capture unchanged;
+- report `Helper PiP active` in the popup;
+- stop the helper stream/remove the helper video and exit only MediaGrabber-owned PiP on completion/cancel.
+
+Purpose:
+
+- test whether the browser/page receives the useful PiP scheduling behavior at document level rather than only for the actual captured video pipeline;
+- reduce visual intrusion if the browser renders the helper's very wide, shallow aspect ratio as a compact PiP strip.
+
+Boundary:
+
+- the PiP browser window is still browser-managed and visible; this experiment does not hide it, move it off-screen, or spoof PiP/visibility state.
+
+Status: real-site validation pending.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
