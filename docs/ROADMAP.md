@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/hls-extensionless-segments` on the remaining HLS candidate while preserving normal playback.
-- If the HLS download succeeds, finalize the protocol-scoped extension-relaxation fix and add regression coverage.
-- If it still fails, inspect the next coarse FFmpeg failure class and HLS tag/segment format before broadening request context or relay logic.
+- Complete FFmpeg post-decryption HLS segment-format probing on the remaining candidate.
+- Keep PR #8 unmerged until the zero-stream cause is identified; request-context mismatch has been ruled down substantially.
+- If the child format probes cleanly, adjust only the required segment-demuxer/probing option; if no media format probes, investigate the decrypted segment payload path without exposing media/key bytes.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
