@@ -31,6 +31,7 @@ class MediaDetector {
   constructor() {
     this.setupNavigationListener();
     this.setupMSEListener();
+    this.setupMseCaptureControlListener();
     this.checkForArmedMseCapture();
     this.setupDOMObserver();
     this.scanExistingMedia();
@@ -209,6 +210,25 @@ class MediaDetector {
         case 'progress':
           this.mseState.totalBytes = msg.totalBytes;
           break;
+      }
+    });
+  }
+
+  private setupMseCaptureControlListener(): void {
+    chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+      if (
+        message?.type === 'MSE_CAPTURE_STOP' &&
+        this.mseCaptureSessionId &&
+        message.sessionId === this.mseCaptureSessionId
+      ) {
+        window.postMessage({
+          source: 'MediaGrabber-Content',
+          type: 'mse-capture-stop',
+          sessionId: this.mseCaptureSessionId
+        }, '*');
+        this.mseCaptureFinished = true;
+        sendResponse({ success: true });
+        return;
       }
     });
   }
