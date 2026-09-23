@@ -31,6 +31,7 @@
     viewBufferMatches: number;
   }>();
   let nextSourceBufferDiagnosticId = 1;
+  let xhrArrayBufferResponseCount = 0;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -52,6 +53,7 @@
     MSE_STATE.duration = 0;
     sourceBufferDiagnostics.clear();
     nextSourceBufferDiagnosticId = 1;
+    xhrArrayBufferResponseCount = 0;
   }
 
   function getAppendView(data: any): Uint8Array | undefined {
@@ -84,7 +86,8 @@
         appends: state.appends,
         boxes: state.boxes,
         identityMatches: state.identityMatches,
-        viewBufferMatches: state.viewBufferMatches
+        viewBufferMatches: state.viewBufferMatches,
+        xhrArrayBufferResponseCount
       }))
     }, generation);
   }
@@ -333,6 +336,7 @@
           const response = this.response;
           if (response instanceof ArrayBuffer) {
             xhrArrayBufferResponses.add(response);
+            xhrArrayBufferResponseCount++;
           }
         } catch {}
       });
