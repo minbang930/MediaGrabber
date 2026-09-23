@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/hls-extensionless-segments` on the remaining HLS candidate while preserving normal playback.
-- If the HLS download succeeds, finalize the protocol-scoped extension-relaxation fix and add regression coverage.
-- If it still fails, inspect the next coarse FFmpeg failure class and HLS tag/segment format before broadening request context or relay logic.
+- Complete request-context presence diagnosis for exact-matched browser HLS segment/key requests.
+- Keep PR #8 unmerged until we know whether FFmpeg is missing browser Cookie/Authorization/Range/Referer/Origin context.
+- If context differs, design the smallest credential-safe propagation model; if not, inspect decrypted segment probing/format without broadening browser credential handling.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
