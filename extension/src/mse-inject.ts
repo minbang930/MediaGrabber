@@ -19,7 +19,18 @@
 
   let pageGeneration = 0;
   const mediaSourceGenerations = new WeakMap<MediaSource, number>();
-  const sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  let sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  let sourceBufferMimes = new WeakMap<SourceBuffer, string>();
+  let sourceBufferInitScanned = new WeakSet<SourceBuffer>();
+  let captureTrackIds = new WeakMap<SourceBuffer, number>();
+  const captureFragmentIndexes = new Map<number, number>();
+  const CAPTURE_CHUNK_BYTES = 192 * 1024;
+  let nextCaptureTrackId = 1;
+  let activeCaptureSession: string | null = null;
+  let captureFinished = false;
+  let captureBytes = 0;
+  let captureFragments = 0;
+  let protectedMediaObserved = false;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -39,9 +50,155 @@
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
     MSE_STATE.duration = 0;
+    sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+    sourceBufferMimes = new WeakMap<SourceBuffer, string>();
+    sourceBufferInitScanned = new WeakSet<SourceBuffer>();
+    captureTrackIds = new WeakMap<SourceBuffer, number>();
+    captureFragmentIndexes.clear();
+    nextCaptureTrackId = 1;
+    captureBytes = 0;
+    captureFragments = 0;
+    protectedMediaObserved = false;
   }
 
+  function getAppendView(data: any): Uint8Array | undefined {
+    try {
+      if (data instanceof ArrayBuffer) return new Uint8Array(data);
+      if (ArrayBuffer.isView(data)) {
+        return new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+      }
+    } catch {}
+    return undefined;
+  }
+
+  function containsAsciiMarker(view: Uint8Array, marker: string): boolean {
+    const markerBytes = Array.from(marker).map((char) => char.charCodeAt(0));
+    const limit = Math.min(view.byteLength, 512 * 1024);
+    outer: for (let i = 0; i <= limit - markerBytes.length; i++) {
+      for (let j = 0; j < markerBytes.length; j++) {
+        if (view[i + j] !== markerBytes[j]) continue outer;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function hasProtectedMediaMarker(view: Uint8Array | undefined): boolean {
+    if (!view) return false;
+    return ['pssh', 'sinf', 'schm', 'tenc', 'encv', 'enca', 'cenc', 'cbcs']
+      .some((marker) => containsAsciiMarker(view, marker));
+  }
+
+  function stopCapture(error?: string): void {
+    const sessionId = activeCaptureSession;
+    activeCaptureSession = null;
+    captureFinished = true;
+    if (sessionId && error) {
+      postToContentScript({
+        type: 'mse-capture-error',
+        sessionId,
+        error
+      });
+    }
+  }
+
+  function finishCapture(): void {
+    if (!activeCaptureSession || captureFinished) return;
+    const sessionId = activeCaptureSession;
+    captureFinished = true;
+    activeCaptureSession = null;
+    postToContentScript({
+      type: 'mse-capture-complete',
+      sessionId,
+      bytes: captureBytes,
+      fragments: captureFragments
+    });
+  }
+
+  function ensureCaptureTrack(sourceBuffer: SourceBuffer): { id: number; mime: string } | undefined {
+    const mime = sourceBufferMimes.get(sourceBuffer);
+    if (!mime || !isVideoMime(mime)) return undefined;
+
+    let id = captureTrackIds.get(sourceBuffer);
+    if (!id) {
+      id = nextCaptureTrackId++;
+      captureTrackIds.set(sourceBuffer, id);
+      captureFragmentIndexes.set(id, 0);
+    }
+    return { id, mime };
+  }
+
+  function postCaptureFragment(
+    sessionId: string,
+    trackId: number,
+    mime: string,
+    fragmentIndex: number,
+    chunks: Uint8Array[]
+  ): void {
+    const chunkCount = chunks.length;
+    chunks.forEach((bytes, chunkIndex) => {
+      postToContentScript({
+        type: 'mse-capture-chunk',
+        sessionId,
+        trackId,
+        mime,
+        fragmentIndex,
+        chunkIndex,
+        chunkCount,
+        bytes
+      });
+    });
+  }
+
+  window.addEventListener('message', (event) => {
+    if (
+      event.source !== window ||
+      !event.data ||
+      event.data.source !== 'MediaGrabber-Content'
+    ) return;
+
+    if (event.data.type === 'mse-capture-start') {
+      const sessionId = String(event.data.sessionId || '');
+      if (!sessionId) return;
+      if (protectedMediaObserved) {
+        postToContentScript({
+          type: 'mse-capture-error',
+          sessionId,
+          error: 'Protected EME/CENC media is not supported.'
+        });
+        return;
+      }
+
+      activeCaptureSession = sessionId;
+      captureFinished = false;
+      captureTrackIds = new WeakMap<SourceBuffer, number>();
+      captureFragmentIndexes.clear();
+      nextCaptureTrackId = 1;
+      captureBytes = 0;
+      captureFragments = 0;
+      return;
+    }
+
+    if (
+      event.data.type === 'mse-capture-stop' &&
+      activeCaptureSession &&
+      event.data.sessionId === activeCaptureSession
+    ) {
+      stopCapture();
+    }
+  });
+
+  document.addEventListener('encrypted', () => {
+    protectedMediaObserved = true;
+    if (activeCaptureSession) {
+      stopCapture('Protected EME/CENC media is not supported.');
+    }
+  }, true);
+
   function notifyNavigation(): void {
+    if (activeCaptureSession) {
+      stopCapture('Page navigation interrupted the MSE capture.');
+    }
     pageGeneration++;
     resetMSEState();
     postToContentScript({ type: 'navigation' });
@@ -133,8 +290,14 @@
   URL.createObjectURL = function(obj: any): string {
     const url = origCreateObjectURL.call(this, obj);
     if (obj instanceof MediaSource) {
-      mediaSourceGenerations.set(obj, pageGeneration);
+      const generation = pageGeneration;
+      mediaSourceGenerations.set(obj, generation);
       MSE_STATE.blobUrl = url;
+      try {
+        obj.addEventListener('sourceended', () => {
+          if (generation === pageGeneration) finishCapture();
+        }, { once: true });
+      } catch {}
       postToContentScript({ type: 'mse-detected', blobUrl: url });
     }
     return url;
@@ -155,47 +318,127 @@
     }
     const sourceBuffer = origAddSourceBuffer.call(this, mimeType);
     sourceBufferGenerations.set(sourceBuffer, generation);
+    sourceBufferMimes.set(sourceBuffer, mimeType);
     return sourceBuffer;
   };
 
   const origAppendBuffer = SourceBuffer.prototype.appendBuffer;
   SourceBuffer.prototype.appendBuffer = function(data: any): void {
+    let capturePayload: {
+      sessionId: string;
+      trackId: number;
+      mime: string;
+      fragmentIndex: number;
+      chunks: Uint8Array[];
+      bytes: number;
+    } | undefined;
+
     try {
       const generation = sourceBufferGenerations.get(this);
-      if (generation !== pageGeneration) return;
+      if (generation === pageGeneration) {
+        const view = getAppendView(data);
 
-      if (generation === pageGeneration && data instanceof ArrayBuffer) {
-        MSE_STATE.totalBytes += data.byteLength;
-      } else if (generation === pageGeneration && data && data.buffer) {
-        MSE_STATE.totalBytes += data.buffer.byteLength;
-      }
+        if (!sourceBufferInitScanned.has(this)) {
+          sourceBufferInitScanned.add(this);
+          if (hasProtectedMediaMarker(view)) {
+            protectedMediaObserved = true;
+            if (activeCaptureSession) {
+              stopCapture('Protected EME/CENC media is not supported.');
+            }
+          }
+        }
 
-      MSE_STATE.segmentCount++;
+        if (data instanceof ArrayBuffer) {
+          MSE_STATE.totalBytes += data.byteLength;
+        } else if (data && data.buffer) {
+          MSE_STATE.totalBytes += data.byteLength || data.buffer.byteLength;
+        }
 
-      if (MSE_STATE.segmentCount === 1) {
-        postToContentScript({
-          type: 'first-segment',
-          blobUrl: MSE_STATE.blobUrl,
-          mimeType: MSE_STATE.mimeType,
-          codecs: MSE_STATE.codecs,
-          totalBytes: MSE_STATE.totalBytes,
-          segmentCount: MSE_STATE.segmentCount
-        });
-      }
+        MSE_STATE.segmentCount++;
 
-      if (MSE_STATE.segmentCount % 50 === 0) {
-        postToContentScript({
-          type: 'progress',
-          blobUrl: MSE_STATE.blobUrl,
-          totalBytes: MSE_STATE.totalBytes,
-          segmentCount: MSE_STATE.segmentCount
-        });
+        if (
+          activeCaptureSession &&
+          !captureFinished &&
+          !protectedMediaObserved &&
+          view &&
+          view.byteLength > 0
+        ) {
+          const track = ensureCaptureTrack(this);
+          if (track) {
+            const fragmentIndex = captureFragmentIndexes.get(track.id) || 0;
+            captureFragmentIndexes.set(track.id, fragmentIndex + 1);
+
+            const chunks: Uint8Array[] = [];
+            for (let offset = 0; offset < view.byteLength; offset += CAPTURE_CHUNK_BYTES) {
+              chunks.push(view.slice(offset, Math.min(view.byteLength, offset + CAPTURE_CHUNK_BYTES)));
+            }
+
+            capturePayload = {
+              sessionId: activeCaptureSession,
+              trackId: track.id,
+              mime: track.mime,
+              fragmentIndex,
+              chunks,
+              bytes: view.byteLength
+            };
+          }
+        }
+
+        if (MSE_STATE.segmentCount === 1) {
+          postToContentScript({
+            type: 'first-segment',
+            blobUrl: MSE_STATE.blobUrl,
+            mimeType: MSE_STATE.mimeType,
+            codecs: MSE_STATE.codecs,
+            totalBytes: MSE_STATE.totalBytes,
+            segmentCount: MSE_STATE.segmentCount
+          });
+        }
+
+        if (MSE_STATE.segmentCount % 50 === 0) {
+          postToContentScript({
+            type: 'progress',
+            blobUrl: MSE_STATE.blobUrl,
+            totalBytes: MSE_STATE.totalBytes,
+            segmentCount: MSE_STATE.segmentCount
+          });
+        }
       }
     } catch {}
-    finally {
-      origAppendBuffer.call(this, data);
+
+    origAppendBuffer.call(this, data);
+
+    if (
+      capturePayload &&
+      activeCaptureSession === capturePayload.sessionId &&
+      !captureFinished
+    ) {
+      captureBytes += capturePayload.bytes;
+      captureFragments++;
+      postCaptureFragment(
+        capturePayload.sessionId,
+        capturePayload.trackId,
+        capturePayload.mime,
+        capturePayload.fragmentIndex,
+        capturePayload.chunks
+      );
+
+      if (captureFragments === 1 || captureFragments % 10 === 0) {
+        postToContentScript({
+          type: 'mse-capture-progress',
+          sessionId: capturePayload.sessionId,
+          bytes: captureBytes,
+          fragments: captureFragments
+        });
+      }
     }
   };
+
+  document.addEventListener('ended', (event) => {
+    if (event.target instanceof HTMLMediaElement) {
+      finishCapture();
+    }
+  }, true);
 
   const origDurationDesc = Object.getOwnPropertyDescriptor(MediaSource.prototype, 'duration');
   if (origDurationDesc && origDurationDesc.set) {
@@ -268,4 +511,6 @@
 
     return result;
   };
+
+  postToContentScript({ type: 'mse-hook-ready' });
 })();
