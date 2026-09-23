@@ -20,6 +20,17 @@
   let pageGeneration = 0;
   const mediaSourceGenerations = new WeakMap<MediaSource, number>();
   const sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  const xhrArrayBufferResponses = new WeakSet<ArrayBuffer>();
+  const sourceBufferDiagnosticIds = new WeakMap<SourceBuffer, number>();
+  const sourceBufferDiagnostics = new Map<number, {
+    id: number;
+    mime: string;
+    appends: number;
+    boxes: Record<string, number>;
+    identityMatches: number;
+    viewBufferMatches: number;
+  }>();
+  let nextSourceBufferDiagnosticId = 1;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -39,6 +50,43 @@
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
     MSE_STATE.duration = 0;
+    sourceBufferDiagnostics.clear();
+    nextSourceBufferDiagnosticId = 1;
+  }
+
+  function getAppendView(data: any): Uint8Array | undefined {
+    try {
+      if (data instanceof ArrayBuffer) return new Uint8Array(data);
+      if (ArrayBuffer.isView(data)) {
+        return new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+      }
+    } catch {}
+    return undefined;
+  }
+
+  function classifyAppendSignature(view: Uint8Array | undefined): string {
+    if (!view || view.byteLength < 4) return 'short';
+    if (view[0] === 0x1a && view[1] === 0x45 && view[2] === 0xdf && view[3] === 0xa3) return 'ebml';
+    if (view[0] === 0x1f && view[1] === 0x43 && view[2] === 0xb6 && view[3] === 0x75) return 'cluster';
+    if (view.byteLength >= 8) {
+      const box = String.fromCharCode(view[4], view[5], view[6], view[7]).toLowerCase();
+      if (/^(ftyp|moov|moof|mdat|styp|sidx|free)$/.test(box)) return box;
+    }
+    return 'other';
+  }
+
+  function postIdentityDiagnostic(generation = pageGeneration): void {
+    postToContentScript({
+      type: 'xhr-identity-diagnostic',
+      buffers: Array.from(sourceBufferDiagnostics.values()).map((state) => ({
+        id: state.id,
+        mime: state.mime,
+        appends: state.appends,
+        boxes: state.boxes,
+        identityMatches: state.identityMatches,
+        viewBufferMatches: state.viewBufferMatches
+      }))
+    }, generation);
   }
 
   function notifyNavigation(): void {
@@ -155,6 +203,21 @@
     }
     const sourceBuffer = origAddSourceBuffer.call(this, mimeType);
     sourceBufferGenerations.set(sourceBuffer, generation);
+
+    if (isVideoMime(mimeType) && generation === pageGeneration) {
+      const id = nextSourceBufferDiagnosticId++;
+      sourceBufferDiagnosticIds.set(sourceBuffer, id);
+      sourceBufferDiagnostics.set(id, {
+        id,
+        mime: mimeType.split(';', 1)[0].trim().toLowerCase(),
+        appends: 0,
+        boxes: {},
+        identityMatches: 0,
+        viewBufferMatches: 0
+      });
+      postIdentityDiagnostic(generation);
+    }
+
     return sourceBuffer;
   };
 
@@ -171,6 +234,24 @@
       }
 
       MSE_STATE.segmentCount++;
+
+      const diagnosticId = sourceBufferDiagnosticIds.get(this);
+      const diagnostic = diagnosticId ? sourceBufferDiagnostics.get(diagnosticId) : undefined;
+      if (diagnostic) {
+        const view = getAppendView(data);
+        const signature = classifyAppendSignature(view);
+        const directMatch = data instanceof ArrayBuffer && xhrArrayBufferResponses.has(data);
+        const bufferMatch = ArrayBuffer.isView(data) && xhrArrayBufferResponses.has(data.buffer as ArrayBuffer);
+
+        diagnostic.appends++;
+        diagnostic.boxes[signature] = (diagnostic.boxes[signature] || 0) + 1;
+        if (directMatch) diagnostic.identityMatches++;
+        if (bufferMatch) diagnostic.viewBufferMatches++;
+
+        if (diagnostic.appends === 1 || diagnostic.appends % 10 === 0) {
+          postIdentityDiagnostic(generation);
+        }
+      }
 
       if (MSE_STATE.segmentCount === 1) {
         postToContentScript({
@@ -244,6 +325,18 @@
     // Observe completion through a normal EventTarget listener instead of wrapping
     // each XHR instance or redefining onload/onreadystatechange/onloadend.
     const result = origXHROpen.apply(this, arguments as any);
+
+    try {
+      this.addEventListener('load', () => {
+        if (generation !== pageGeneration) return;
+        try {
+          const response = this.response;
+          if (response instanceof ArrayBuffer) {
+            xhrArrayBufferResponses.add(response);
+          }
+        } catch {}
+      });
+    } catch {}
 
     if (looksLikeSegment(originalUrl) && generation === pageGeneration && MSE_STATE.segmentUrls.length < 500) {
       MSE_STATE.segmentUrls.push(originalUrl);
