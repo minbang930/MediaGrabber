@@ -20,9 +20,9 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Merge PR #6 after final status review; its popup-count acceptance criterion passed.
-2. Diagnose the remaining HLS candidate's FFmpeg failure without exposing signed URLs or request credentials.
-3. Distinguish manifest-open failure, segment-open failure, and missing relay rewrite before changing download logic.
+1. Build/load `fix/hls-extensionless-segments` and confirm playback remains normal.
+2. Retry the single HLS entry and record whether the download starts/completes.
+3. If it fails, record the visible error text only; do not share signed URLs, cookies, or authorization headers.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
