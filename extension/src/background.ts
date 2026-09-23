@@ -992,48 +992,63 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
 
     return { success: true, downloadId: downloadKey };
   } else if (video.type === 'mse') {
-    // MSE stream — use FFmpeg with captured segment URLs if available
-    const downloadKey = `convert_${Date.now()}`;
+    if (tabId === undefined) {
+      throw new Error('MSE capture requires an active browser tab.');
+    }
+
+    if (mseCaptureByTab.has(tabId)) {
+      await abortMseCaptureForTab(tabId);
+    }
+
+    const downloadKey = `msecap_${Date.now()}`;
+    const sessionId = `mse_${tabId}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const outputPath = joinOutputPath(directory, outFilename);
-    const formatArgs = video.qualities[0]?.formatArgs;
+
+    await nativeClient.mseCaptureStart(sessionId);
+
+    const session: MseCaptureSession = {
+      sessionId,
+      downloadKey,
+      tabId,
+      sourceFrameId: video.sourceFrameId,
+      sourceFrameUrl: video.sourceFrameUrl,
+      outputPath,
+      finalizing: false
+    };
+    mseCaptureByTab.set(tabId, session);
 
     activeDownloads.set(downloadKey, {
-      type: 'convert',
+      type: 'mse-capture',
       video,
       directory,
       filename: outFilename,
-      tabId
+      tabId,
+      captureSessionId: sessionId,
+      lastProgress: { percent: 0, bytesReceived: 0, totalBytes: 0 }
     });
 
-    const ffmpegArgs = formatArgs && formatArgs.length > 0
-      ? [...formatArgs, '-y', outputPath]
-      : ['-i', video.url, '-c', 'copy', '-y', outputPath];
+    notify(
+      'MSE capture armed',
+      'The page will reload. Start playback from the beginning and let it play until capture finishes.'
+    );
 
-    nativeClient.convert(
-      ffmpegArgs,
-      { progressTime: 1000, startHandler: downloadKey }
-    ).then(result => {
-      if (result.exitCode === 0) {
-        notify('Download complete', outFilename);
-        popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_COMPLETE', downloadId: downloadKey, outputPath });
+    setTimeout(() => {
+      try {
+        chrome.tabs.reload(tabId, {}, () => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError) {
+            void failMseCapture(session, `Could not reload the page for MSE capture: ${lastError.message}`);
+          }
         });
-      } else {
-        notify('Download failed', outFilename);
-        popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: formatFfmpegError(result.exitCode, result.stderr) });
-        });
+      } catch (error: any) {
+        void failMseCapture(
+          session,
+          `Could not reload the page for MSE capture: ${error?.message || String(error)}`
+        );
       }
-      activeDownloads.delete(downloadKey);
-    }).catch(err => {
-      notify('Download failed', err.message);
-      popupPorts.forEach(port => {
-        port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: err.message });
-      });
-      activeDownloads.delete(downloadKey);
-    });
+    }, 250);
 
-    return { success: true, downloadId: downloadKey };
+    return { success: true, downloadId: downloadKey, capture: true };
   } else if (video.type === 'ytdlp') {
     // yt-dlp path (YouTube etc.)
     const downloadKey = `ytdlp_${Date.now()}`;
