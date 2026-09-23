@@ -1239,8 +1239,11 @@ function handleVideoDetected(tabId: number | undefined, video: VideoInfo, frameI
   if (!isCurrentContentGeneration(tabId, generation, frameId === 0)) {
     return { success: true, stale: true };
   }
-  upsertVideo(tabId, video);
-  console.log(`[MediaGrabber] Detected video on tab ${tabId}:`, video.title);
+  const storedVideo = video.type === 'mse'
+    ? { ...video, sourceFrameId: frameId, sourceFrameUrl: frameUrl }
+    : video;
+  upsertVideo(tabId, storedVideo);
+  console.log(`[MediaGrabber] Detected video on tab ${tabId}:`, storedVideo.title);
   return { success: true, count: (mediaByTab.get(tabId) || []).length };
 }
 
