@@ -20,6 +20,19 @@
   let pageGeneration = 0;
   const mediaSourceGenerations = new WeakMap<MediaSource, number>();
   const sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  const sourceBufferDiagnosticIds = new WeakMap<SourceBuffer, number>();
+  const sourceBufferDiagnostics = new Map<number, {
+    id: number;
+    mime: string;
+    appends: number;
+    boxes: Record<string, number>;
+    t20: number;
+    t100: number;
+    t500: number;
+    unique100: number;
+    multi100: number;
+  }>();
+  let nextSourceBufferDiagnosticId = 1;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -39,6 +52,75 @@
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
     MSE_STATE.duration = 0;
+    sourceBufferDiagnostics.clear();
+    nextSourceBufferDiagnosticId = 1;
+  }
+
+  function getAppendView(data: any): Uint8Array | undefined {
+    try {
+      if (data instanceof ArrayBuffer) return new Uint8Array(data);
+      if (ArrayBuffer.isView(data)) {
+        return new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+      }
+    } catch {}
+    return undefined;
+  }
+
+  function classifyAppendSignature(view: Uint8Array | undefined): string {
+    if (!view || view.byteLength < 4) return 'short';
+    if (view[0] === 0x1a && view[1] === 0x45 && view[2] === 0xdf && view[3] === 0xa3) return 'ebml';
+    if (view[0] === 0x1f && view[1] === 0x43 && view[2] === 0xb6 && view[3] === 0x75) return 'cluster';
+    if (view.byteLength >= 8) {
+      const box = String.fromCharCode(view[4], view[5], view[6], view[7]).toLowerCase();
+      if (/^(ftyp|moov|moof|mdat|styp|sidx|free)$/.test(box)) return box;
+    }
+    return 'other';
+  }
+
+  function inspectRecentXhrTiming(): { t20: boolean; t100: boolean; t500: boolean; count100: number } {
+    const now = performance.now();
+    let count20 = 0;
+    let count100 = 0;
+    let count500 = 0;
+
+    for (const entry of performance.getEntriesByType('resource') as PerformanceResourceTiming[]) {
+      if ((entry.initiatorType || '').toLowerCase() !== 'xmlhttprequest') continue;
+      const age = now - entry.responseEnd;
+      if (age < -20 || age > 500) continue;
+      try {
+        if (!/^https?:$/.test(new URL(entry.name, window.location.href).protocol)) continue;
+      } catch {
+        continue;
+      }
+
+      if (age <= 20) count20++;
+      if (age <= 100) count100++;
+      count500++;
+    }
+
+    return {
+      t20: count20 > 0,
+      t100: count100 > 0,
+      t500: count500 > 0,
+      count100
+    };
+  }
+
+  function postTimingDiagnostic(generation = pageGeneration): void {
+    postToContentScript({
+      type: 'xhr-timing-diagnostic',
+      buffers: Array.from(sourceBufferDiagnostics.values()).map((state) => ({
+        id: state.id,
+        mime: state.mime,
+        appends: state.appends,
+        boxes: state.boxes,
+        t20: state.t20,
+        t100: state.t100,
+        t500: state.t500,
+        unique100: state.unique100,
+        multi100: state.multi100
+      }))
+    }, generation);
   }
 
   function notifyNavigation(): void {
@@ -155,6 +237,24 @@
     }
     const sourceBuffer = origAddSourceBuffer.call(this, mimeType);
     sourceBufferGenerations.set(sourceBuffer, generation);
+
+    if (isVideoMime(mimeType) && generation === pageGeneration) {
+      const id = nextSourceBufferDiagnosticId++;
+      sourceBufferDiagnosticIds.set(sourceBuffer, id);
+      sourceBufferDiagnostics.set(id, {
+        id,
+        mime: mimeType.split(';', 1)[0].trim().toLowerCase(),
+        appends: 0,
+        boxes: {},
+        t20: 0,
+        t100: 0,
+        t500: 0,
+        unique100: 0,
+        multi100: 0
+      });
+      postTimingDiagnostic(generation);
+    }
+
     return sourceBuffer;
   };
 
@@ -171,6 +271,25 @@
       }
 
       MSE_STATE.segmentCount++;
+
+      const diagnosticId = sourceBufferDiagnosticIds.get(this);
+      const diagnostic = diagnosticId ? sourceBufferDiagnostics.get(diagnosticId) : undefined;
+      if (diagnostic) {
+        const signature = classifyAppendSignature(getAppendView(data));
+        const timing = inspectRecentXhrTiming();
+
+        diagnostic.appends++;
+        diagnostic.boxes[signature] = (diagnostic.boxes[signature] || 0) + 1;
+        if (timing.t20) diagnostic.t20++;
+        if (timing.t100) diagnostic.t100++;
+        if (timing.t500) diagnostic.t500++;
+        if (timing.count100 === 1) diagnostic.unique100++;
+        if (timing.count100 > 1) diagnostic.multi100++;
+
+        if (diagnostic.appends === 1 || diagnostic.appends % 10 === 0) {
+          postTimingDiagnostic(generation);
+        }
+      }
 
       if (MSE_STATE.segmentCount === 1) {
         postToContentScript({
