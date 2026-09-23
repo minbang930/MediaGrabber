@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 fixed the player regression and PR #6 reduced the popup from 14 entries to 1. PR #8 removes the prior terminal `invalid-data` but still produces no usable output. PRs #9-#12 ruled down protected-media and request-context explanations. Closed PR #13 showed the decrypted child segment is probed as `image2`. Branch `diag/hls-candidate-role` now checks whether the visible HLS is an image playlist and whether another real media candidate is hidden by the duration-first filter.
+PR #3 fixed the player regression and PR #6 reduced the popup from 14 entries to 1. PR #8 removes the prior terminal `invalid-data` but still produces no usable output. PRs #9-#12 ruled down protected-media and request-context explanations. Closed PR #13 showed the decrypted child segment is probed as `image2`. Draft PR #14 (`diag/hls-candidate-role`) now checks whether the visible HLS is an image playlist and whether another real media candidate is hidden by the duration-first filter.
 
 A separate direct-download test currently fails with HTTP 404.
 
