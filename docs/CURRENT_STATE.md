@@ -100,7 +100,10 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- After image-only HLS filtering, does the real MSE candidate become the sole visible media entry while playback stays normal?
-- Can the current MSE `All Segments` path reconstruct the full video, or does it need ordered fragment concatenation/muxing?
+- PR #15 validation passed: playback remains normal and the real MSE candidate is visible.
+- Diagnostics #16-#20 established that the player transforms 30 opaque XHR ArrayBuffers into separate clear audio/video fMP4 appends; filename, timing, size, and object-identity URL mapping are not reliable for this transport.
+- PR #21 observed no EME `encrypted` event, initData, or CENC markers on the tested path (`eme=0`, `drm=none`). This supports treating this specific path as clear/non-DRM while retaining runtime protection guards.
+- Branch `fix/mse-append-capture` replaces the broken blob/URL FFmpeg path with explicit user-triggered post-transform MSE capture: reload once, capture per-SourceBuffer fragments to native temporary files, then mux the first video/audio tracks with FFmpeg. Real-site validation is pending.
+- Does the new capture path preserve normal playback and produce a complete synchronized output on the tested player?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
