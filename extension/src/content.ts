@@ -19,6 +19,17 @@ class MediaDetector {
   private metadataTimer: number | undefined;
   private pageUrl = window.location.href;
   private pageGeneration = 0;
+  private mseTimingDiagnostics: Array<{
+    id: number;
+    mime: string;
+    appends: number;
+    boxes: Record<string, number>;
+    t20: number;
+    t100: number;
+    t500: number;
+    unique100: number;
+    multi100: number;
+  }> = [];
   private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
     totalBytes: 0,
     segmentUrls: []
@@ -52,6 +63,7 @@ class MediaDetector {
     this.detectedVideos = [];
     this.lastMetadataKey = '';
     this.mseState = { totalBytes: 0, segmentUrls: [] };
+    this.mseTimingDiagnostics = [];
     this.sendNavigation(pageUrl, this.pageGeneration);
     this.scheduleMetadataSend();
   }
@@ -104,6 +116,13 @@ class MediaDetector {
           }
           break;
 
+        case 'xhr-timing-diagnostic':
+          if (Array.isArray(msg.buffers)) {
+            this.mseTimingDiagnostics = msg.buffers;
+            this.sendMSEToBackground();
+          }
+          break;
+
         case 'duration':
           this.mseState.duration = msg.duration;
           this.sendMSEToBackground();
@@ -140,11 +159,33 @@ class MediaDetector {
     const codec = this.mseState.codecs || '';
     const isAudioOnly = this.mseState.mimeType.startsWith('audio/');
 
+    const timingSummary = this.mseTimingDiagnostics
+      .map((buffer) => {
+        const boxes = Object.entries(buffer.boxes || {})
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .slice(0, 3)
+          .map(([name, count]) => `${name}${count}`)
+          .join(',');
+        return [
+          `B${buffer.id}`,
+          buffer.mime,
+          `a${buffer.appends}`,
+          `box=${boxes || 'none'}`,
+          `t20=${buffer.t20}`,
+          `t100=${buffer.t100}`,
+          `t500=${buffer.t500}`,
+          `u100=${buffer.unique100}`,
+          `m100=${buffer.multi100}`
+        ].join(' ');
+      })
+      .join(' | ');
+
+    const baseLabel = isAudioOnly ? 'Audio' : (codec ? codec.split(',')[0] : 'MSE Stream');
     const qualities: VideoQuality[] = [{
       height: 0,
       url,
       bitrate: 0,
-      label: isAudioOnly ? 'Audio' : (codec ? codec.split(',')[0] : 'MSE Stream'),
+      label: timingSummary ? `${baseLabel} [${timingSummary}]` : baseLabel,
       kind: isAudioOnly ? 'audio' : 'video'
     }];
 
