@@ -826,6 +826,73 @@ function formatFfmpegError(exitCode: number | null, stderr: string): string {
   }
   return `FFmpeg exit code ${exitCode}: ${details.slice(-1000)}`;
 }
+function formatSafeHlsError(exitCode: number | null, stderr: string): string {
+  if (/Output file does not contain any stream/i.test(stderr)) {
+    return 'FFmpeg opened the HLS input but did not detect a media stream.';
+  }
+  if (/HTTP error (401|403|404|410)|Server returned 4XX/i.test(stderr)) {
+    return 'FFmpeg could not access an HLS resource.';
+  }
+  if (/Invalid data found|Error opening input/i.test(stderr)) {
+    return 'FFmpeg could not parse the HLS input.';
+  }
+  return `FFmpeg HLS diagnostic failed with exit code ${exitCode}.`;
+}
+
+function countMatches(text: string, pattern: RegExp): number {
+  return Array.from(text.matchAll(pattern)).length;
+}
+
+function formatHlsProbeDiagnostic(stderr: string): string {
+  const probed = new Map<string, { count: number; maxScore: number }>();
+  const probePattern = /Format\s+([^\s]+)\s+probed with size=\d+ and score=(\d+)/g;
+  for (const match of stderr.matchAll(probePattern)) {
+    const name = match[1];
+    const score = Number(match[2]) || 0;
+    const current = probed.get(name) || { count: 0, maxScore: 0 };
+    current.count += 1;
+    current.maxScore = Math.max(current.maxScore, score);
+    probed.set(name, current);
+  }
+
+  const lowScore = new Map<string, { count: number; maxScore: number }>();
+  const lowScorePattern = /Format\s+([^\s]+)\s+detected only with low score of (\d+)/g;
+  for (const match of stderr.matchAll(lowScorePattern)) {
+    const name = match[1];
+    const score = Number(match[2]) || 0;
+    const current = lowScore.get(name) || { count: 0, maxScore: 0 };
+    current.count += 1;
+    current.maxScore = Math.max(current.maxScore, score);
+    lowScore.set(name, current);
+  }
+
+  const formatSummary = (formats: Map<string, { count: number; maxScore: number }>): string => {
+    const values = Array.from(formats.entries())
+      .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+      .slice(0, 8)
+      .map(([name, info]) => `${name}:${info.count}@${info.maxScore}`);
+    return values.length > 0 ? values.join(',') : 'none';
+  };
+
+  let maxNbStreams = 0;
+  for (const match of stderr.matchAll(/nb_streams:(\d+)/g)) {
+    maxNbStreams = Math.max(maxNbStreams, Number(match[1]) || 0);
+  }
+
+  const streamLines = countMatches(stderr, /Stream #\d+:\d+/g);
+  const hlsRequests = countMatches(stderr, /HLS request for url/g);
+  const cryptoOpens = countMatches(stderr, /Opening 'crypto(?:\+|:)/g);
+
+  return [
+    `probed=${formatSummary(probed)}`,
+    `lowScore=${formatSummary(lowScore)}`,
+    `hlsRequests=${hlsRequests}`,
+    `cryptoOpens=${cryptoOpens}`,
+    `maxNbStreams=${maxNbStreams}`,
+    `streamLines=${streamLines}`
+  ].join(' ');
+}
+
 
 interface ManifestFile {
   placeholder: string;
@@ -934,6 +1001,9 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
     const prepared = type === 'hls'
       ? await prepareHlsArguments(tabId ?? -1, baseArgs, video.referer)
       : { args: baseArgs, manifestFiles: [] };
+    const convertArgs = type === 'hls'
+      ? ['-loglevel', 'debug', ...prepared.args]
+      : prepared.args;
 
     activeDownloads.set(downloadKey, {
       type: 'convert',
@@ -945,7 +1015,7 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
 
     // Start ffmpeg asynchronously — progress comes via convertOutput push
     nativeClient.convert(
-      prepared.args,
+      convertArgs,
       { progressTime: 1000, startHandler: downloadKey, manifestFiles: prepared.manifestFiles }
     ).then(result => {
       if (result.exitCode === 0) {
@@ -956,7 +1026,10 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       } else {
         notify('Download failed', outFilename);
         popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: formatFfmpegError(result.exitCode, result.stderr) });
+          const error = type === 'hls'
+            ? `${formatSafeHlsError(result.exitCode, result.stderr)}\nHLS FFmpeg probe: ${formatHlsProbeDiagnostic(result.stderr)}`
+            : formatFfmpegError(result.exitCode, result.stderr);
+          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error });
         });
       }
       activeDownloads.delete(downloadKey);
