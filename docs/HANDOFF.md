@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 fixed the player regression and PR #6 merged the DOM-source-noise fix, reducing the popup from 14 entries to 1. Diagnostics through PR #14 then showed that the remaining visible HLS is an image-only playlist (`image:1118`) while a real `mse` candidate is hidden. PR #8 was closed without merge because its FFmpeg HLS tuning targeted that wrong image playlist. PR #15 (`fix/filter-image-hls`) passed manual validation: playback remained normal and the MSE candidate surfaced; its download still fails in FFmpeg and is the next focus.
+PR #15 surfaced the real MSE candidate while preserving playback. Diagnostics #16-#21 then showed that this player transforms opaque XHR data into separate clear audio/video fMP4 SourceBuffers, with no reliable URL replay path and no observed EME/CENC protection. Branch `fix/mse-append-capture` implements an explicit user-triggered reload/capture/native-spool/mux workflow. It is not merged; full build and real-site validation are pending.
 
 A separate direct-download test currently fails with HTTP 404.
 
