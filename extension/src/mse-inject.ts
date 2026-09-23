@@ -30,12 +30,19 @@
   let captureTrackIds = new WeakMap<SourceBuffer, number>();
   const captureFragmentIndexes = new Map<number, number>();
   const CAPTURE_CHUNK_BYTES = 192 * 1024;
+  const CAPTURE_PLAYBACK_RATE = 8;
   let nextCaptureTrackId = 1;
   let activeCaptureSession: string | null = null;
   let captureFinished = false;
   let captureBytes = 0;
   let captureFragments = 0;
   let protectedMediaObserved = false;
+  let acceleratedMediaElement: HTMLMediaElement | null = null;
+  let originalPlaybackRate = 1;
+  let originalDefaultPlaybackRate = 1;
+  let accelerationRetryTimer: number | undefined;
+  let accelerationRetryAttempts = 0;
+  let accelerationTargetMode: 'blob' | 'playing-video' | 'playing-media' | null = null;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -69,6 +76,121 @@
     captureBytes = 0;
     captureFragments = 0;
     protectedMediaObserved = false;
+    restoreCaptureAcceleration();
+  }
+
+  function clearAccelerationRetry(): void {
+    if (accelerationRetryTimer !== undefined) {
+      clearTimeout(accelerationRetryTimer);
+      accelerationRetryTimer = undefined;
+    }
+    accelerationRetryAttempts = 0;
+  }
+
+  function isCapturedMediaElement(element: HTMLMediaElement): boolean {
+    const current = element.currentSrc || element.src;
+    if (!current) return false;
+    if (capturedBlobUrls.has(current)) return true;
+    const mediaSource = blobUrlMediaSources.get(current);
+    return Boolean(mediaSource && capturedMediaSources.has(mediaSource));
+  }
+
+  function postAccelerationState(element: HTMLMediaElement): void {
+    if (!activeCaptureSession || captureFinished) return;
+    postToContentScript({
+      type: 'mse-capture-acceleration',
+      sessionId: activeCaptureSession,
+      requestedRate: CAPTURE_PLAYBACK_RATE,
+      effectiveRate: Number(element.playbackRate) || 1,
+      targetMode: accelerationTargetMode || 'unknown'
+    });
+  }
+
+  function restoreCaptureAcceleration(): void {
+    clearAccelerationRetry();
+    const element = acceleratedMediaElement;
+    acceleratedMediaElement = null;
+    accelerationTargetMode = null;
+    if (!element) return;
+    try {
+      element.defaultPlaybackRate = originalDefaultPlaybackRate;
+      element.playbackRate = originalPlaybackRate;
+    } catch {}
+  }
+
+  function tryApplyCaptureAcceleration(): boolean {
+    if (!activeCaptureSession || captureFinished || protectedMediaObserved) return false;
+
+    const existing = acceleratedMediaElement;
+    if (existing && isCapturedMediaElement(existing)) {
+      try {
+        existing.defaultPlaybackRate = CAPTURE_PLAYBACK_RATE;
+        existing.playbackRate = CAPTURE_PLAYBACK_RATE;
+        postAccelerationState(existing);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    const allMedia = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'));
+    let media = allMedia.find((element) => isCapturedMediaElement(element));
+    let targetMode: 'blob' | 'playing-video' | 'playing-media' | null = media ? 'blob' : null;
+
+    if (!media && captureFragments > 0) {
+      const playingVideos = allMedia.filter((element) =>
+        element instanceof HTMLVideoElement &&
+        !element.paused &&
+        !element.ended &&
+        element.readyState >= 2
+      );
+      if (playingVideos.length === 1) {
+        media = playingVideos[0];
+        targetMode = 'playing-video';
+      }
+    }
+
+    if (!media && captureFragments > 0) {
+      const playingMedia = allMedia.filter((element) =>
+        !element.paused &&
+        !element.ended &&
+        element.readyState >= 2
+      );
+      if (playingMedia.length === 1) {
+        media = playingMedia[0];
+        targetMode = 'playing-media';
+      }
+    }
+
+    if (!media || !targetMode) return false;
+
+    acceleratedMediaElement = media;
+    accelerationTargetMode = targetMode;
+    originalPlaybackRate = media.playbackRate;
+    originalDefaultPlaybackRate = media.defaultPlaybackRate;
+    try {
+      media.defaultPlaybackRate = CAPTURE_PLAYBACK_RATE;
+      media.playbackRate = CAPTURE_PLAYBACK_RATE;
+      postAccelerationState(media);
+      clearAccelerationRetry();
+      return true;
+    } catch {
+      acceleratedMediaElement = null;
+      accelerationTargetMode = null;
+      return false;
+    }
+  }
+
+  function scheduleCaptureAcceleration(): void {
+    if (tryApplyCaptureAcceleration()) return;
+    if (!activeCaptureSession || captureFinished || accelerationRetryAttempts >= 20) return;
+
+    accelerationRetryAttempts++;
+    if (accelerationRetryTimer !== undefined) clearTimeout(accelerationRetryTimer);
+    accelerationRetryTimer = window.setTimeout(() => {
+      accelerationRetryTimer = undefined;
+      scheduleCaptureAcceleration();
+    }, 250);
   }
 
   function getAppendView(data: any): Uint8Array | undefined {
@@ -101,6 +223,7 @@
 
   function stopCapture(error?: string): void {
     const sessionId = activeCaptureSession;
+    restoreCaptureAcceleration();
     activeCaptureSession = null;
     captureFinished = true;
     if (sessionId && error) {
@@ -115,6 +238,7 @@
   function finishCapture(): void {
     if (!activeCaptureSession || captureFinished) return;
     const sessionId = activeCaptureSession;
+    restoreCaptureAcceleration();
     captureFinished = true;
     activeCaptureSession = null;
     postToContentScript({
@@ -141,6 +265,7 @@
         const blobUrl = mediaSourceBlobUrls.get(mediaSource);
         if (blobUrl) capturedBlobUrls.add(blobUrl);
       }
+      scheduleCaptureAcceleration();
     }
     return { id, mime };
   }
@@ -192,6 +317,7 @@
         return;
       }
 
+      restoreCaptureAcceleration();
       activeCaptureSession = sessionId;
       captureFinished = false;
       capturedMediaSources = new WeakSet<MediaSource>();
@@ -201,7 +327,9 @@
       nextCaptureTrackId = 1;
       captureBytes = 0;
       captureFragments = 0;
+      accelerationRetryAttempts = 0;
       postToContentScript({ type: 'mse-capture-started', sessionId });
+      scheduleCaptureAcceleration();
       return;
     }
 
@@ -454,6 +582,10 @@
 
       captureBytes += capturePayload.bytes;
       captureFragments++;
+      if (captureFragments === 1) {
+        accelerationRetryAttempts = 0;
+        scheduleCaptureAcceleration();
+      }
       postCaptureFragment(
         capturePayload.sessionId,
         capturePayload.trackId,
@@ -484,6 +616,27 @@
       (mediaSource && capturedMediaSources.has(mediaSource))
     ) {
       finishCapture();
+    }
+  }, true);
+
+  document.addEventListener('play', (event) => {
+    if (
+      event.target instanceof HTMLMediaElement &&
+      activeCaptureSession &&
+      isCapturedMediaElement(event.target)
+    ) {
+      scheduleCaptureAcceleration();
+    }
+  }, true);
+
+  document.addEventListener('ratechange', (event) => {
+    if (
+      event.target instanceof HTMLMediaElement &&
+      event.target === acceleratedMediaElement &&
+      activeCaptureSession &&
+      !captureFinished
+    ) {
+      postAccelerationState(event.target);
     }
   }, true);
 

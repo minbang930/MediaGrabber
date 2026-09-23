@@ -279,6 +279,78 @@ Confirmed limitation of the current architecture:
 - seeking ahead is not considered a safe substitute because skipped intervals may never be appended.
 
 This is now a UX/performance limitation rather than a functional failure.
+## 2026-09-24 — Candidate: accelerate complete MSE capture with playbackRate
+
+Goal: reduce wall-clock capture time without changing fragment ordering or using timeline seeks.
+
+Experiment on `exp/mse-playback-rate-acceleration`:
+
+- base: validated PR #22 append-capture implementation;
+- only during an explicit active MSE capture, identify the HTMLMediaElement whose blob URL belongs to the captured MediaSource;
+- request `playbackRate = 8` and `defaultPlaybackRate = 8`;
+- do not auto-play or auto-seek;
+- report both requested and effective rates through the existing capture progress UI;
+- restore the element's original playback/defaultPlaybackRate on success, cancellation, error, or navigation.
+
+Why this is the first acceleration candidate:
+
+- chronological playback is preserved, so fMP4 fragment ordering and timestamps are not intentionally reordered;
+- the existing capture/mux pipeline remains unchanged;
+- the change is limited to the explicit download session and is reversible;
+- if the player rejects/resets the rate, the effective rate is observable rather than silently assumed.
+
+Acceptance:
+
+- ordinary playback before Download remains normal;
+- after reload and one manual Play action, popup shows an effective rate above 1×, ideally 8×;
+- capture bytes/fragments continue increasing without transport errors;
+- wall-clock completion is materially faster than media duration;
+- final output remains complete, playable, and synchronized;
+- playback rate returns to its original value after capture.
+
+If this fails, do not jump directly to arbitrary seeks. The next candidate should be coverage-aware sequential seeking, which requires fragment-time coverage tracking and likely ordered fragment indexing to avoid gaps/duplicates.
+## 2026-09-24 — First playback-rate acceleration validation
+
+Observation:
+
+- ordinary playback before capture remained normal;
+- MSE capture still worked and popup progress reached values such as `Capturing… 24.0 MB · 70 fragments`;
+- playback did not accelerate;
+- popup showed no requested/effective playback-rate state at all.
+
+Interpretation:
+
+- this does not show that the player rejected 8×;
+- the acceleration code never selected a target HTMLMediaElement, because its first implementation required the media element's `currentSrc/src` to match a blob URL associated with the captured MediaSource;
+- on this player, capture succeeds even though that exact DOM URL association is not exposed to the hook.
+
+Follow-up on PR #23:
+
+- retain exact blob matching as the preferred target;
+- only after at least one real MSE fragment has been captured, allow a fallback when the capture frame contains exactly one currently playing video element;
+- if no unique playing video exists, allow a unique playing media element as a secondary fallback;
+- report the target mode (`blob`, `playing-video`, or `playing-media`) together with requested/effective rate;
+- do not accelerate if the candidate is ambiguous.
+
+Status: focused revalidation pending.
+## 2026-09-24 — Playback-rate acceleration validation passed
+
+Second acceleration validation passed end-to-end:
+
+- ordinary playback before Download remained normal;
+- after capture reload and manual Play, the player accelerated successfully;
+- MSE capture continued while accelerated;
+- download completed successfully;
+- the final downloaded video was normal/playable.
+
+Confirmed outcome:
+
+- chronological playback-rate acceleration is a viable way to reduce wall-clock MSE capture time on the tested player;
+- the unique-playing-video fallback successfully identified the target where exact captured-blob matching did not;
+- arbitrary seeking is not needed for this tested transport and remains a higher-risk fallback because it can skip fragments;
+- acceleration stays scoped to explicit capture sessions and is restored afterward.
+
+Decision candidate promoted to confirmed: prefer reversible chronological playback-rate acceleration before any seek-based acceleration strategy.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.

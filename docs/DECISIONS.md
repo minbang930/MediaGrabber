@@ -70,6 +70,28 @@ Design constraints:
 
 Consequence: MSE download becomes a capture-and-mux workflow rather than URL replay for this transport class. Real-site compatibility must still be validated before merge.
 
+## 2026-09-24 — Prefer chronological playback-rate acceleration over seek-based capture
+
+Decision: for clear MSE append capture, accelerate the player chronologically with a bounded playbackRate request before considering timeline seeking.
+
+Evidence:
+
+- the validated append-capture path already depends on the player appending the full timeline in order;
+- 8× playback-rate acceleration completed successfully on the tested player;
+- capture continued normally while accelerated;
+- the final downloaded video was normal/playable;
+- exact blob-to-element matching was unavailable on this player, but a unique currently playing video in the locked capture frame was a safe enough fallback after the first captured fragment.
+
+Constraints:
+
+- acceleration is active only during an explicit capture session;
+- no automatic seek is used;
+- if the target media element is ambiguous, do not accelerate;
+- restore the original playback/defaultPlaybackRate when capture ends or is cancelled;
+- keep effective rate observable rather than assuming the player accepted the requested rate.
+
+Consequence: seek-based acceleration remains a fallback research direction only for transports where chronological playback-rate acceleration is ineffective.
+
 ## Inherited architecture decisions
 
 The current codebase already embodies these upstream choices:

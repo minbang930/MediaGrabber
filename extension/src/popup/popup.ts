@@ -669,7 +669,10 @@ function updateProgressUI(progress: any): void {
           ? formatFileSize(progress.bytesReceived)
           : '0 B';
         const fragments = typeof progress.fragments === 'number' ? progress.fragments : 0;
-        updateStatus(`Capturing… ${captured} · ${fragments} fragments`, 'info');
+        const effectiveRate = typeof progress.effectiveRate === 'number' ? progress.effectiveRate : 0;
+        const rateSuffix = effectiveRate > 1 ? ` · ${effectiveRate.toFixed(1)}×` : '';
+        const targetSuffix = progress.targetMode ? ` · target=${progress.targetMode}` : '';
+        updateStatus(`Capturing… ${captured} · ${fragments} fragments${rateSuffix}${targetSuffix}`, 'info');
         break;
       }
       case 'finalizing':
@@ -732,6 +735,20 @@ function updateProgressUI(progress: any): void {
     progress.bytesReceived > 0
   ) {
     speedEl.textContent = `Captured ${formatFileSize(progress.bytesReceived)}`;
+  }
+
+  if (
+    speedEl &&
+    progress?.capture &&
+    typeof progress.effectiveRate === 'number' &&
+    typeof progress.requestedRate === 'number'
+  ) {
+    const effective = progress.effectiveRate.toFixed(1);
+    const requested = progress.requestedRate.toFixed(1);
+    const target = progress.targetMode ? ` · target=${progress.targetMode}` : '';
+    speedEl.textContent = progress.effectiveRate === progress.requestedRate
+      ? `Playback: ${effective}×${target}`
+      : `Playback: ${effective}× (requested ${requested}×)${target}`;
   }
 
   if (etaEl && progress.eta) {
