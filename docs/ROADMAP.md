@@ -5,8 +5,7 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 ## Now
 
 - Complete remaining PR #22 acceptance: cancellation and temporary-file cleanup validation, plus deterministic coverage for chunk ordering/session validation.
-- Integrate the validated 8× playback-rate acceleration into PR #22 as the preferred MSE capture UX; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
-- Complete cancellation/temp cleanup and deterministic chunk/session coverage before merging PR #22.
+- Keep the validated 8× playback-rate acceleration in PR #22 as the preferred MSE capture UX; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
 - Merge the MSE reconstruction path only after those checks.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
