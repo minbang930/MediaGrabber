@@ -92,7 +92,7 @@ Verification performed by the agent:
 - attempted full clone/build, but the execution environment could not resolve github.com;
 - isolated TypeScript type-check of the modified XHR hook against DOM typings passed.
 
-Status: implementation complete on the branch, real-site validation pending. This experiment is successful only if playback works with the injector enabled; segment grouping/download behavior should be evaluated after that.
+Result: user manual validation confirmed that the previously broken player now plays normally with the injector enabled. The popup still shows roughly 14 media entries. Conclusion: minimizing XHR interception fixed the observed playback regression, while fragment grouping remains a separate issue to investigate next.
 
 ## Candidate reconstruction issue
 
