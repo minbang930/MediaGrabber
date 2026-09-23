@@ -95,7 +95,8 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - The persistent 14-entry popup count was traced to DOM detection noise: 12 extensionless HTTPS `<source>` descendants, 1 blob currentSrc, and 1 HLS entry.
 - User manual validation confirmed the DOM source-noise fix reduced the popup from 14 entries to 1.
 - The remaining HLS candidate parses in the extension as a media playlist with 1118 segments, no relay codec/mappings are present, referer is present, no rewrite occurs, and FFmpeg classifies the failure as `invalid-data`.
-- Branch `fix/hls-extensionless-segments` applies `extension_picky=0` only to HLS inputs under a narrow protocol whitelist. Real-site validation is pending.
+- Draft PR #8 (`fix/hls-extensionless-segments`) removes the prior terminal `invalid-data` failure under manual testing, but FFmpeg then reports that the output contains no stream. Playback remains normal.
+- Branch `diag/hls-no-stream` adds manifest-structure classification to determine whether the selected HLS is ordinary A/V, fMP4, subtitle/image, LL-HLS, or protected media before another fix is attempted.
 
 ## Open questions
 
