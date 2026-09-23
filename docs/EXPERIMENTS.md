@@ -146,7 +146,21 @@ Experiment on branch `fix/hls-extensionless-segments`:
 - for rewritten temporary local manifests, additionally allow `file` because the CoApp materializes the manifest on disk;
 - do not relax the extension policy for DASH/direct/yt-dlp paths.
 
-Status: implementation complete on the branch, real-site validation pending.
+Result after PR #8: playback remained normal and the prior terminal `invalid-data` was replaced by `Output file does not contain any stream`.
+
+Structure diagnostic from closed PR #9:
+
+- playlist: media;
+- segments: 1118;
+- segment extension class: other for all 1118;
+- no `EXT-X-MAP`, byte ranges, LL-HLS parts/preload hints, or I-frame-only mode;
+- end list present, HLS version 6;
+- encryption: AES-128 with identity key format;
+- FFmpeg terminal category: no-stream.
+
+Interpretation: this is not a SAMPLE-AES-style protected stream, not fMP4 init-map HLS, and not LL-HLS. FFmpeg 8.1 has a normal AES-128 key/decrypt path, so the next unresolved question is whether FFmpeg is receiving the same segment/key HTTP responses that the browser player receives.
+
+Follow-up diagnostic branch: `diag/hls-browser-responses`. It exact-matches known HLS segment/key URLs against browser `webRequest` response events and records only status codes, MIME types, and coarse Content-Length buckets. It does not store URLs, request-header values, cookies, authorization values, or key bytes.
 
 ## Candidate reconstruction issue
 
