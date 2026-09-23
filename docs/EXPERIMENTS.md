@@ -333,6 +333,24 @@ Follow-up on PR #23:
 - do not accelerate if the candidate is ambiguous.
 
 Status: focused revalidation pending.
+## 2026-09-24 — Playback-rate acceleration validation passed
+
+Second acceleration validation passed end-to-end:
+
+- ordinary playback before Download remained normal;
+- after capture reload and manual Play, the player accelerated successfully;
+- MSE capture continued while accelerated;
+- download completed successfully;
+- the final downloaded video was normal/playable.
+
+Confirmed outcome:
+
+- chronological playback-rate acceleration is a viable way to reduce wall-clock MSE capture time on the tested player;
+- the unique-playing-video fallback successfully identified the target where exact captured-blob matching did not;
+- arbitrary seeking is not needed for this tested transport and remains a higher-risk fallback because it can skip fragments;
+- acceleration stays scoped to explicit capture sessions and is restored afterward.
+
+Decision candidate promoted to confirmed: prefer reversible chronological playback-rate acceleration before any seek-based acceleration strategy.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
