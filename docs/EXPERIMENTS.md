@@ -351,6 +351,18 @@ Confirmed outcome:
 - acceleration stays scoped to explicit capture sessions and is restored afterward.
 
 Decision candidate promoted to confirmed: prefer reversible chronological playback-rate acceleration before any seek-based acceleration strategy.
+## 2026-09-24 — Accelerated capture cancellation validation passed
+
+User validation of Cancel during an active accelerated MSE capture passed:
+
+- pressing Cancel stopped capture immediately;
+- the player remained usable and continued normal playback behavior;
+- playback rate returned from the capture acceleration to the original rate;
+- no player regression was observed after cancellation.
+
+This confirms the explicit cancellation path correctly restores player-visible playback state while terminating the active capture session.
+
+Remaining manual acceptance: verify temporary native capture directories/files do not accumulate after success/cancel/error.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
