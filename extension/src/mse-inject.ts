@@ -299,6 +299,11 @@
       event.data.source !== 'MediaGrabber-Content'
     ) return;
 
+    if (event.data.type === 'page-navigation') {
+      notifyNavigation();
+      return;
+    }
+
     if (event.data.type === 'mse-capture-start') {
       const sessionId = String(event.data.sessionId || '');
       if (!sessionId) return;
@@ -358,21 +363,6 @@
     postToContentScript({ type: 'navigation' });
   }
 
-  const origPushState = history.pushState;
-  history.pushState = function(): void {
-    origPushState.apply(this, arguments as any);
-    notifyNavigation();
-  };
-
-  const origReplaceState = history.replaceState;
-  history.replaceState = function(): void {
-    origReplaceState.apply(this, arguments as any);
-    notifyNavigation();
-  };
-
-  window.addEventListener('popstate', notifyNavigation);
-  window.addEventListener('hashchange', notifyNavigation);
-
   function extractCodecs(mime: string): string | null {
     const m = mime.match(/codecs="([^"]+)"/);
     return m ? m[1] : null;
@@ -380,64 +370,6 @@
 
   function isVideoMime(mime: string): boolean {
     return mime && (mime.indexOf('video/mp4') === 0 || mime.indexOf('video/webm') === 0 || mime.indexOf('audio/mp4') === 0);
-  }
-
-  function looksLikeSegment(url: string): boolean {
-    if (!url || url.indexOf('http') !== 0) return false;
-    const path = url.split('?')[0].toLowerCase();
-    if (path.indexOf('.m4s') >= 0) return true;
-    if (path.indexOf('.mp4') >= 0) return true;
-    if (path.indexOf('.webm') >= 0) return true;
-    if (path.indexOf('.ts') >= 0 && path.indexOf('.ts/') < 0) return true;
-    if (path.indexOf('segment') >= 0 || path.indexOf('seg-') >= 0) return true;
-    if (path.indexOf('chunk') >= 0 || path.indexOf('fragment') >= 0) return true;
-    if (path.indexOf('init') >= 0 && path.indexOf('.mp4') >= 0) return true;
-    return false;
-  }
-
-  function isLikelyMediaRequest(url: string): boolean {
-    try {
-      const path = new URL(url, window.location.href).pathname.toLowerCase();
-      return /\.(m3u8|mpd|ts|m4s|mp4|webm)$/.test(path);
-    } catch {
-      return false;
-    }
-  }
-
-  function findRelayUrl(originalUrl: string, startTime: number, responseUrl?: string): string | undefined {
-    try {
-      const original = new URL(originalUrl, window.location.href);
-      if (responseUrl) {
-        const response = new URL(responseUrl, window.location.href);
-        if (response.href !== original.href && response.origin === original.origin && response.pathname !== original.pathname) {
-          return response.href;
-        }
-      }
-
-      const now = performance.now();
-      const entry = performance.getEntriesByType('resource')
-        .filter((item): item is PerformanceResourceTiming => {
-          if (item.startTime < startTime - 50 || item.startTime > now + 50) return false;
-          try {
-            const resource = new URL(item.name, window.location.href);
-            return resource.origin === original.origin && resource.pathname !== original.pathname;
-          } catch {
-            return false;
-          }
-        })
-        .sort((a, b) => Math.abs(a.startTime - startTime) - Math.abs(b.startTime - startTime))[0];
-
-      return entry?.name;
-    } catch {
-      return undefined;
-    }
-  }
-
-  function reportMediaUrlMapping(originalUrl: string, startTime: number, responseUrl?: string, generation = pageGeneration): void {
-    if (generation !== pageGeneration || !isLikelyMediaRequest(originalUrl)) return;
-    const relayUrl = findRelayUrl(originalUrl, startTime, responseUrl);
-    if (!relayUrl || relayUrl === originalUrl) return;
-    postToContentScript({ type: 'media-url-map', originalUrl, relayUrl }, generation);
   }
 
   const origCreateObjectURL = URL.createObjectURL;
@@ -657,60 +589,6 @@
       configurable: true
     });
   }
-
-  const origFetch = window.fetch;
-  window.fetch = function(input: any, init?: any): Promise<Response> {
-    const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-    const generation = pageGeneration;
-    if (looksLikeSegment(url) && generation === pageGeneration && MSE_STATE.segmentUrls.length < 500) {
-      MSE_STATE.segmentUrls.push(url);
-      if (url.indexOf('init') >= 0 || MSE_STATE.segmentUrls.length === 1) {
-        MSE_STATE.initSegmentUrl = MSE_STATE.initSegmentUrl || url;
-      }
-      postToContentScript({
-        type: 'segment-url',
-        url,
-        isInit: url.indexOf('init') >= 0,
-        totalUrls: MSE_STATE.segmentUrls.length
-      }, generation);
-    }
-    return origFetch.apply(this, arguments as any);
-  };
-
-  const origXHROpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method: string, url: string): void {
-    const originalUrl = String(url || '');
-    const generation = pageGeneration;
-    const startTime = performance.now();
-
-    // Preserve the native XMLHttpRequest constructor and event-handler properties.
-    // Observe completion through a normal EventTarget listener instead of wrapping
-    // each XHR instance or redefining onload/onreadystatechange/onloadend.
-    const result = origXHROpen.apply(this, arguments as any);
-
-    if (looksLikeSegment(originalUrl) && generation === pageGeneration && MSE_STATE.segmentUrls.length < 500) {
-      MSE_STATE.segmentUrls.push(originalUrl);
-      if (originalUrl.indexOf('init') >= 0 || MSE_STATE.segmentUrls.length === 1) {
-        MSE_STATE.initSegmentUrl = MSE_STATE.initSegmentUrl || originalUrl;
-      }
-      postToContentScript({
-        type: 'segment-url',
-        url: originalUrl,
-        isInit: originalUrl.indexOf('init') >= 0,
-        totalUrls: MSE_STATE.segmentUrls.length
-      }, generation);
-    }
-
-    if (isLikelyMediaRequest(originalUrl)) {
-      try {
-        this.addEventListener('loadend', () => {
-          reportMediaUrlMapping(originalUrl, startTime, this.responseURL, generation);
-        }, { once: true });
-      } catch {}
-    }
-
-    return result;
-  };
 
   postToContentScript({ type: 'mse-hook-ready' });
 })();
