@@ -100,7 +100,8 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- After image-only HLS filtering, does the real MSE candidate become the sole visible media entry while playback stays normal?
-- Can the current MSE `All Segments` path reconstruct the full video, or does it need ordered fragment concatenation/muxing?
+- User validation after PR #15: playback remains normal and the MSE candidate is visible, but only `MSE Stream` is offered and native FFmpeg cannot open it.
+- Closed PR #16 measured `[b2 a50 u0 init0 injInit0 blob1]`: two SourceBuffers received 50 appendBuffer calls while the current fetch/XHR URL heuristic captured zero segment URLs. URL capture, not reconstruction, is therefore the immediate blocker.
+- Branch `diag/mse-resource-correlation` compares append timing/size with PerformanceResourceTiming metadata and classifies only safe container signatures to determine whether nonstandard network resources can be correlated without more invasive hooks.
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
