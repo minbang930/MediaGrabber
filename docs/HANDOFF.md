@@ -20,9 +20,9 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Validate temporary-file cleanup after cancel/error/success using only filesystem presence/count checks; do not inspect or log media contents.
-2. Add deterministic coverage for native fragment ordering/completeness, session validation, and capture-state helpers, then add a basic PR build workflow.
-3. After those checks, review the full PR #22 diff/status and merge to main if clean.
+1. Wait for the new PR #22 CI workflow to finish and inspect any failed job/step logs.
+2. If CI is green, review the complete PR #22 diff/status, mark ready, and merge to `main`.
+3. Verify latest `main` and CI after merge.
 4. Return to the separate direct-download HTTP 404 and determine the minimal safe request context required.
 
 ## Start here
