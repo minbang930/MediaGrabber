@@ -66,7 +66,7 @@ function initPopup(): void {
   port.onMessage.addListener((msg) => {
     switch (msg.type) {
       case 'MEDIA_LIST':
-        renderMediaList(msg.videos);
+        renderMediaList(msg.videos, msg.diagnosticInventory);
         break;
       case 'DOWNLOAD_STARTED':
         if (msg.success) {
@@ -178,7 +178,10 @@ function updateStatus(text: string, type: 'info' | 'error' | 'success' = 'info')
 /**
  * Render the list of detected media
  */
-function renderMediaList(videos: VideoInfo[]): void {
+function renderMediaList(
+  videos: VideoInfo[],
+  diagnosticInventory?: { total?: number; hiddenTypes?: string; hlsSegments?: string }
+): void {
   const emptyState = document.getElementById('empty-state')!;
   const videoList = document.getElementById('video-list')!;
   const mediaDetails = document.getElementById('media-details')!;
@@ -218,7 +221,15 @@ function renderMediaList(videos: VideoInfo[]): void {
     selectMedia(updatedSelectedVideo, updatedSelectedElement);
   }
   
-  updateStatus(`${displayVideos.length} media found`, 'success');
+  const total = diagnosticInventory?.total ?? displayVideos.length;
+  const hidden = diagnosticInventory?.hiddenTypes || '';
+  const hlsSegments = diagnosticInventory?.hlsSegments || '';
+  updateStatus(
+    `${displayVideos.length} visible / ${total} total` +
+      (hidden ? ` · hidden ${hidden}` : '') +
+      (hlsSegments ? ` · hlsSegments ${hlsSegments}` : ''),
+    'success'
+  );
 }
 
 /**
