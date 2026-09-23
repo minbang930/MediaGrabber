@@ -647,6 +647,16 @@ function updateProgressUI(progress: any): void {
   const speedEl = document.getElementById('progress-speed');
   const etaEl = document.getElementById('progress-eta');
 
+  if (progress?.capture && progress?.phase === 'capture') {
+    const captured = typeof progress.bytesReceived === 'number' && progress.bytesReceived > 0
+      ? formatFileSize(progress.bytesReceived)
+      : '0 B';
+    const fragments = typeof progress.fragments === 'number' ? progress.fragments : 0;
+    updateStatus(`Capturing… ${captured} · ${fragments} fragments`, 'info');
+  } else if (progress?.capture && progress?.phase === 'finalizing') {
+    updateStatus('Capture complete — finalizing MP4…', 'info');
+  }
+
   if (speedEl) speedEl.textContent = '';
   if (etaEl) etaEl.textContent = '';
 
@@ -691,6 +701,13 @@ function updateProgressUI(progress: any): void {
     const mbReceived = (progress.bytesReceived / 1000000).toFixed(1);
     const mbTotal = (progress.totalBytes / 1000000).toFixed(1);
     speedEl.textContent = `${mbReceived} / ${mbTotal} MB`;
+  } else if (
+    speedEl &&
+    progress?.capture &&
+    typeof progress.bytesReceived === 'number' &&
+    progress.bytesReceived > 0
+  ) {
+    speedEl.textContent = `Captured ${formatFileSize(progress.bytesReceived)}`;
   }
 
   if (etaEl && progress.eta) {
