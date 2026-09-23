@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/filter-image-hls`: image-only HLS should disappear while the real MSE candidate remains visible and playback stays normal.
-- Test the surfaced MSE candidate for full-video download.
-- If MSE download is partial, replace the current multiple-independent-input assembly with an ordered reconstruction/mux strategy based on the confirmed fragment format.
+- Determine whether MSE appends can be safely correlated with PerformanceResourceTiming entries by timing/body size and container signature.
+- If correlation is strong, replace filename-based segment detection with a bounded correlation-based capture path; if not, evaluate a minimal append-byte capture architecture without disrupting playback.
+- Only after reliable per-buffer segment acquisition exists, implement ordered reconstruction/muxing.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
