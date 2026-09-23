@@ -94,7 +94,9 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - User manual browser validation passed for the primary acceptance criterion: normal playback with the MSE injector enabled.
 - The persistent 14-entry popup count was traced to DOM detection noise: 12 extensionless HTTPS `<source>` descendants, 1 blob currentSrc, and 1 HLS entry.
 - User manual validation confirmed the DOM source-noise fix reduced the popup from 14 entries to 1.
-- Downloading the remaining HLS candidate still fails with the generic FFmpeg "could not open stream" error, so HLS access/rewrite diagnostics are now the next focus.
+- Closed PRs #8-#14 established that the remaining visible HLS was the wrong candidate: its 1118 segments are images, FFmpeg probed the decrypted child as `image2`, and a hidden `mse` candidate was present.
+- PR #8's `extension_picky` change was closed without merge because it was tuning an image playlist rather than the main video.
+- Branch `fix/filter-image-hls` filters image-only HLS media playlists so the MSE candidate can surface.
 
 ## Open questions
 
