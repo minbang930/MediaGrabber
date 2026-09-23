@@ -415,7 +415,7 @@ Acceptance:
 - final output remains complete/playable;
 - Cancel restores playback rate and ends the tab-capture indicator/stream.
 
-Status: implementation CI passed on Windows/Node 22 (full build, CoApp tests, extension package smoke check); real-site validation pending.
+Status: implementation CI passed on Windows/Node 22 (full build, CoApp tests, extension package smoke check); real-site validation passed.
 
 First PR #28 manual attempt observation:
 
@@ -447,10 +447,19 @@ Full native-window occlusion result:
 Confirmed interpretation:
 
 - on the tested Windows/Chromium player, an active hidden offscreen-consumed `tabCapture` stream is sufficient to prevent the previously observed occlusion stall;
-- visible PiP is not required for this keep-alive behavior;
-- the remaining acceptance is teardown only: successful completion and Cancel must both end the tab-capture indicator/stream, and Cancel must still restore the original playback rate.
+- visible PiP is not required for this keep-alive behavior.
 
+Teardown validation result:
 
+- successful completion ended the Chrome tab-capture/share indicator;
+- Cancel ended the tab-capture/share indicator;
+- Cancel restored the original playback rate;
+- the player remained usable after cancellation.
+
+Final result:
+
+- PR #28 passed the full manual acceptance for the tested Windows/Chromium transformed-XHR MSE workflow;
+- the temporary PR28 build-identification markers were removed before merge preparation.
 
 ## Candidate reconstruction issue
 
