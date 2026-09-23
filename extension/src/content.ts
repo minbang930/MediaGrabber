@@ -89,6 +89,7 @@ class MediaDetector {
           this.mseState.blobUrl = msg.blobUrl;
           this.mseState.mimeType = msg.mimeType;
           this.mseState.codecs = msg.codecs;
+          this.reportMSESegmentOwnership(this.mseState.segmentUrls);
           this.sendMSEToBackground();
           break;
 
@@ -98,6 +99,7 @@ class MediaDetector {
           }
           if (this.mseState.segmentUrls.length < 500 && !this.mseState.segmentUrls.includes(msg.url)) {
             this.mseState.segmentUrls.push(msg.url);
+            this.reportMSESegmentOwnership([msg.url]);
           }
           if (this.mseState.segmentUrls.length === 1 || this.mseState.segmentUrls.length % 20 === 0) {
             this.sendMSEToBackground();
@@ -130,6 +132,23 @@ class MediaDetector {
           break;
       }
     });
+  }
+
+  private reportMSESegmentOwnership(urls: string[]): void {
+    if (!this.mseState.mimeType || urls.length === 0) return;
+
+    for (const url of urls) {
+      try {
+        chrome.runtime.sendMessage({
+          type: 'MSE_SEGMENT_URL',
+          url,
+          pageUrl: this.pageUrl,
+          generation: this.pageGeneration
+        }, () => { void chrome.runtime.lastError; });
+      } catch {
+        // Extension context invalidated
+      }
+    }
   }
 
   private sendMSEToBackground(): void {
