@@ -102,7 +102,7 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- Does the HLS candidate succeed when extension matching is relaxed only for HLS inputs under a constrained protocol whitelist?
-- If not, what HLS tag or segment format causes FFmpeg's `invalid-data` result despite successful browser-side playlist parsing?
+- Do browser segment requests carry Cookie, Authorization, Range, Referer, or Origin context that FFmpeg does not currently reproduce?
+- If browser request context is minimal too, does the no-stream failure come from FFmpeg receiving a different body despite HTTP 200, or from segment format/probing after AES-128 decryption?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
