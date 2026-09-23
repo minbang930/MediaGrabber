@@ -56,7 +56,7 @@ It currently instruments:
 - URL.createObjectURL;
 - MediaSource and SourceBuffer APIs.
 
-It reports MSE state and original-to-relay URL mappings to content.ts using window.postMessage.
+It reports MSE state and original-to-relay URL mappings to content.ts using window.postMessage. On the append-capture branch, an explicit capture session additionally copies already-clear SourceBuffer append fragments only after the native append call has been forwarded, splits them into bounded chunks, and stops on EME/CENC indicators.
 
 This layer is currently the highest compatibility-risk component because it mutates page-global APIs. The current compatibility patch removes XMLHttpRequest constructor replacement and per-instance event-property redefinition, while retaining a minimal prototype.open observer. The project requirement is to retain observability while preserving native page semantics.
 
