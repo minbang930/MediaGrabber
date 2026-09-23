@@ -4,9 +4,8 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Complete remaining PR #22 acceptance: temporary-file cleanup validation, plus deterministic coverage for chunk ordering/session validation.
-- Keep the validated 8× playback-rate acceleration in PR #22 as the preferred MSE capture UX; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
-- Merge the MSE reconstruction path only after those checks.
+- Wait for PR #22's new deterministic MSE tests and Windows/Node 22 CI to pass, then perform final diff/status review and merge.
+- Keep the validated 8× playback-rate acceleration as the preferred MSE capture UX; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
