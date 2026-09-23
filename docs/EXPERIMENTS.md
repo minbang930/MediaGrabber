@@ -142,6 +142,27 @@ Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excl
 
 Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
+## 2026-09-24 — MSE append activity exists but URL capture is zero
+
+Closed PR #16 result:
+
+- `b2`: two MSE SourceBuffers were created;
+- `a50`: 50 SourceBuffer.appendBuffer calls were observed;
+- `u0`: the current fetch/XHR segment-URL heuristic captured zero URLs;
+- `init0` / `injInit0`: neither content nor injector had an init URL candidate;
+- `blob1`: the browser MediaSource blob URL exists.
+
+Conclusion: the player is receiving and appending media data, but MediaGrabber's URL-based MSE capture misses its source entirely. The immediate problem is not FFmpeg fragment assembly yet.
+
+Follow-up branch `diag/mse-resource-correlation`:
+
+- assigns only numeric IDs to SourceBuffers;
+- classifies append payload prefixes as ISO-BMFF boxes (`ftyp`, `moof`, `mdat`, etc.), EBML/cluster, or other;
+- checks whether a recent PerformanceResourceTiming response has body size equal/near the append size;
+- records only counts and initiator types, never resource URLs or media bytes.
+
+Purpose: decide whether a less-invasive timing/size correlation can recover the underlying network resources, or whether the MSE bytes arrive through a path that requires a different architecture.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
