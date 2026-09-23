@@ -29,6 +29,8 @@ interface VideoInfo {
   thumbnail?: string;
   duration?: number;
   fileSize?: number;
+  sourceFrameId?: number;
+  sourceFrameUrl?: string;
 }
 
 interface QualityOption {
@@ -70,7 +72,7 @@ function initPopup(): void {
         break;
       case 'DOWNLOAD_STARTED':
         if (msg.success) {
-          showDownloadStarted(msg.downloadId);
+          showDownloadStarted(msg.downloadId, Boolean(msg.capture));
         } else {
           showError(msg.error || 'Download failed');
         }
@@ -629,9 +631,14 @@ function restoreDownloadUI(downloadId: string, filename: string, progress: any):
   document.getElementById('cancel-btn')?.focus();
 }
 
-function showDownloadStarted(downloadId: string): void {
+function showDownloadStarted(downloadId: string, capture = false): void {
   currentDownloadId = downloadId;
-  updateStatus('Download started…', 'info');
+  updateStatus(
+    capture
+      ? 'Capture armed — the page will reload. Play the video from the beginning until it finishes.'
+      : 'Download started…',
+    'info'
+  );
 }
 
 function updateProgressUI(progress: any): void {
