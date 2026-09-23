@@ -8,6 +8,7 @@ import rpc from './rpc';
 
 interface PendingFragment {
   chunkCount: number;
+  receivedCount: number;
   chunks: Array<Buffer | undefined>;
 }
 
@@ -72,11 +73,15 @@ function getTrack(session: CaptureSession, trackId: number, mime: string): Captu
 function flushTrack(track: CaptureTrack): void {
   while (true) {
     const fragment = track.pending.get(track.nextFragment);
-    if (!fragment || fragment.chunks.some((chunk) => !chunk)) return;
+    if (!fragment || fragment.receivedCount !== fragment.chunkCount) return;
 
-    for (const chunk of fragment.chunks) {
-      fs.appendFileSync(track.filePath, chunk!);
-      track.bytes += chunk!.length;
+    for (let index = 0; index < fragment.chunkCount; index++) {
+      const chunk = fragment.chunks[index];
+      if (!chunk) {
+        throw new Error('MSE capture fragment completeness invariant failed');
+      }
+      fs.appendFileSync(track.filePath, chunk);
+      track.bytes += chunk.length;
     }
     track.pending.delete(track.nextFragment);
     track.nextFragment += 1;
@@ -140,7 +145,11 @@ rpc.listen({
       if (track.pending.size >= MAX_PENDING_FRAGMENTS) {
         throw new Error('Too many pending MSE capture fragments');
       }
-      fragment = { chunkCount, chunks: new Array(chunkCount) };
+      fragment = {
+        chunkCount,
+        receivedCount: 0,
+        chunks: new Array(chunkCount).fill(undefined)
+      };
       track.pending.set(fragmentIndex, fragment);
     }
     if (fragment.chunkCount !== chunkCount) {
@@ -149,6 +158,7 @@ rpc.listen({
 
     if (!fragment.chunks[chunkIndex]) {
       fragment.chunks[chunkIndex] = Buffer.from(base64, 'base64');
+      fragment.receivedCount++;
     }
 
     flushTrack(track);
