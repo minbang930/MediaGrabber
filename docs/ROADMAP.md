@@ -5,7 +5,8 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 ## Now
 
 - Complete remaining PR #22 acceptance: cancellation and temporary-file cleanup validation, plus deterministic coverage for chunk ordering/session validation.
-- Evaluate a safer UX improvement so users do not need to watch the video in real time: candidate directions include player-driven preload/fast playback only if they preserve player semantics and capture completeness; do not assume seeking loads skipped fragments.
+- Validate the 8× playback-rate acceleration experiment first. If it preserves capture completeness and output sync, prefer this reversible chronological approach over seeking.
+- Only if playback-rate acceleration is insufficient, design coverage-aware sequential seeking with fragment timestamp/coverage tracking; do not assume arbitrary seeks load skipped fragments.
 - Merge the MSE reconstruction path only after those checks.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
