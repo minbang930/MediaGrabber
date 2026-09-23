@@ -90,7 +90,7 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Verification note
 
-- Full repository build could not be executed by the agent environment because outbound GitHub DNS was unavailable during clone.
+- The agent's earlier local clone/build attempt was blocked by outbound GitHub DNS, but PR #22's GitHub Actions CI now provides the repository build baseline and passed successfully on Windows/Node 22.
 - The modified XHR hook was separately type-checked against DOM typings with TypeScript 5.8 and compiled successfully.
 - User manual browser validation passed for the primary acceptance criterion: normal playback with the MSE injector enabled.
 - The persistent 14-entry popup count was traced to DOM detection noise: 12 extensionless HTTPS `<source>` descendants, 1 blob currentSrc, and 1 HLS entry.
