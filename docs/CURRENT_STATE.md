@@ -107,5 +107,5 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 - The separate direct-download test still returns HTTP 404. Does that path require a safe Referer/Origin context, another non-sensitive request property, or simply a fresher/intermediate URL?
 - The MSE append-capture path is validated on the tested transformed-XHR player, but broader compatibility remains evidence-driven; do not infer universal MSE support from this result.
-- PR #25's detached capture window was not sufficient: capture stopped when the window became fully occluded and resumed when partially visible. Draft PR #26 (`exp/mse-pip-capture`) now tests standard video Picture-in-Picture as a less invasive always-on-top playback surface.
+- PR #25's detached capture window was not sufficient: capture stopped when the window became fully occluded and resumed when partially visible. PR #26 real-video PiP passed real-site validation: capture continued while using other tabs/apps and the final download completed normally. Branch `exp/mse-helper-pip-capture` now tests whether a synthetic minimal helper PiP can provide the same scheduling benefit with less visual intrusion.
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
