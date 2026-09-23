@@ -28,6 +28,7 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 - Long-term repository-first agent/documentation workspace initialized.
 - Current manual compatibility observations captured in EXPERIMENTS.md.
 - PR #22 merged the validated transformed-XHR MSE append-capture/mux workflow, 8× chronological acceleration, cancellation cleanup, deterministic MSE fragment/session tests, and Windows/Node 22 PR/main CI.
+- PR #28 validated hidden video-only `tabCapture` + offscreen keep-alive so explicit MSE capture continues across background tabs and full native-window occlusion without visible PiP; completion/Cancel teardown passed.
 
 ## Deferred / not a goal
 

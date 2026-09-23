@@ -14,15 +14,27 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #22 merged to `main` as `19206681b33e987a1f08ef65ffa087c6264eda4f`. The tested transformed-XHR MSE path now has an explicit clear-fMP4 capture workflow: one reload, post-transform SourceBuffer capture, native ordered per-track spooling, FFmpeg muxing, up to 8× chronological playback acceleration, cancellation/rate restoration, EME/CENC guards, deterministic fragment/session tests, and PR/main CI. User validation passed end-to-end, including output correctness and temporary-file cleanup.
+PR #28 has completed manual acceptance for MSE background keep-alive. The validated flow is now: explicit clear-SourceBuffer capture + up to 8× chronological playback + video-only Chrome `tabCapture` held by a hidden offscreen extension document.
 
-The active compatibility problem is now separate: a direct-download candidate on another tested site returns HTTP 404. The exact cause remains unproven. Current code does not pass saved request context on the direct-download path even though the CoApp downloader supports caller-provided headers; treat that as a hypothesis to test narrowly, not as the established root cause.
+Manual validation passed for:
+
+- no MediaGrabber PiP requirement;
+- capture continuing after switching to another browser tab;
+- capture continuing while another maximized application fully covers the browser window;
+- successful completion ending the Chrome capture/share indicator;
+- Cancel ending the capture/share indicator, restoring the original playback rate, and leaving the player usable.
+
+PR #28 also passed the Windows/Node 22 build/test/package CI before final cleanup. The test-only PR28 name/version/popup markers have been removed; final CI/merge verification is the remaining repository step.
+
+The next compatibility problem after this merge is the separate direct-download HTTP 404. Its exact cause remains unproven; request-context propagation remains a candidate, not a conclusion.
 
 ## Next actions
 
-1. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, freshness/redirect behavior, and the minimum non-sensitive request context available to the extension/CoApp.
-2. If request context is required, design the narrowest safe propagation model; do not copy cookies, authorization tokens, or broad browser headers by default.
-3. Keep MSE compatibility evidence-driven and preserve the validated player behavior/DRM boundary.
+1. Confirm final PR #28 CI after removal of diagnostic build markers and documentation finalization.
+2. Review the final diff, mark the PR ready, merge it, and verify latest `main`.
+3. Close the superseded real-video PiP draft PR #26 after PR #28 is merged.
+4. Return to the direct-download HTTP 404 investigation from current `main`, testing URL freshness/provenance before adding browser request context.
+5. If request context is proven necessary, propagate only the minimum non-sensitive values required; do not copy cookies, authorization tokens, or broad browser headers by default.
 
 ## Start here
 

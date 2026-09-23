@@ -651,9 +651,13 @@ function updateProgressUI(progress: any): void {
   const etaEl = document.getElementById('progress-eta');
 
   if (progress?.capture) {
+    const keepAliveSuffix = progress.keepAliveMode === 'tab-capture'
+      ? ' · background keep-alive active'
+      : '';
+
     switch (progress.phase) {
       case 'reload':
-        updateStatus('Capture session ready — waiting for the reloaded player frame…', 'info');
+        updateStatus(`Capture session ready${keepAliveSuffix} — waiting for the reloaded player frame…`, 'info');
         break;
       case 'frame-ready':
         updateStatus('Player frame connected — waiting for the MAIN-world capture hook…', 'info');
@@ -672,7 +676,7 @@ function updateProgressUI(progress: any): void {
         const effectiveRate = typeof progress.effectiveRate === 'number' ? progress.effectiveRate : 0;
         const rateSuffix = effectiveRate > 1 ? ` · ${effectiveRate.toFixed(1)}×` : '';
         const targetSuffix = progress.targetMode ? ` · target=${progress.targetMode}` : '';
-        updateStatus(`Capturing… ${captured} · ${fragments} fragments${rateSuffix}${targetSuffix}`, 'info');
+        updateStatus(`Capturing… ${captured} · ${fragments} fragments${rateSuffix}${targetSuffix}${keepAliveSuffix}`, 'info');
         break;
       }
       case 'finalizing':

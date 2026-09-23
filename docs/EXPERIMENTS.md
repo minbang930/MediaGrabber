@@ -371,6 +371,96 @@ Manual filesystem validation after the accelerated-capture Cancel test:
 - no native MSE capture temporary directory remained after cancellation.
 
 Together with the successful-completion cleanup path already exercised during end-to-end download validation, this closes the manual temporary-spool cleanup acceptance for the tested workflow.
+## 2026-09-24 — Background MSE capture: detached window, real PiP, helper PiP
+
+Goal: let the user work in another tab/application while the tested transformed-XHR player continues producing MSE appends.
+
+Observed sequence:
+
+- Draft PR #25 moved the player into a dedicated normal browser window. Capture continued while that window remained at least partially visible, but stopped when another maximized application fully covered it and resumed when it became visible again.
+- Draft PR #26 used standard video Picture-in-Picture for the real captured video. User validation confirmed capture/download continued while using other tabs and while another maximized application covered the browser.
+- PR #27 (closed without merge) replaced the real-video PiP target with a synthetic 320×40 black helper video. User validation again confirmed background capture continued, but the browser still presented a normal visible PiP window rather than a practically hidden/thin surface.
+
+Interpretation:
+
+- the detached-window failure is consistent with Chromium native-window occlusion backgrounding;
+- an active PiP is sufficient to keep the tested workflow progressing, including when the helper rather than the real media owns PiP;
+- standard PiP does not meet the desired UX because the browser controls the PiP window and keeps it visibly present even when its source is tiny.
+
+Status: PiP remains a working fallback experiment, not the desired final UX.
+
+## 2026-09-24 — Candidate: hidden tabCapture keep-alive instead of visible PiP
+
+Goal: obtain the useful browser scheduling behavior without a visible PiP window.
+
+Evidence motivating the experiment:
+
+- Chromium's Windows WebContents video-capture browser tests explicitly verify that capture continues while the host window is occluded (test name: `CapturesWhenOccluded`);
+- Chrome's `tabCapture` API can keep a tab capture alive across navigation, and Chrome 116+ allows a service-worker-created stream ID to be consumed by an offscreen extension document.
+
+Experiment on `exp/mse-tab-capture-keepalive`:
+
+- add `tabCapture` and `offscreen` extension permissions;
+- before the MSE reload, create a video-only tab capture for the selected tab;
+- consume and hold that stream in a hidden offscreen extension document; do not save, inspect, or forward captured pixels/audio;
+- request video only so the experiment does not intentionally take over page audio;
+- keep the existing clear-SourceBuffer capture, 8× playback acceleration, native spooling, DRM guards, and mux path unchanged;
+- stop the tab-capture stream on success, cancellation, error, or tab close;
+- expose `background keep-alive active` in the popup for diagnostic confirmation.
+
+Acceptance:
+
+- no PiP window opens;
+- after the post-reload Play action, MSE bytes/fragments continue increasing when another maximized application completely covers the browser;
+- final output remains complete/playable;
+- Cancel restores playback rate and ends the tab-capture indicator/stream.
+
+Status: implementation CI passed on Windows/Node 22 (full build, CoApp tests, extension package smoke check); real-site validation passed.
+
+First PR #28 manual attempt observation:
+
+- user reported that a PiP window still appeared;
+- repository inspection of PR #28 found zero `requestPictureInPicture`, `pictureInPicture`, `enterpictureinpicture`, or `leavepictureinpicture` references in `mse-inject.ts`, `background.ts`, and the offscreen consumer;
+- therefore the source of the visible PiP is not yet confirmed. Leading possibilities are a stale previously-built PR #26/#27 bundle still loaded in the browser, or site/browser-owned PiP behavior.
+
+Diagnostic follow-up:
+
+- PR #28 now uses manifest name `MediaGrabber [tabCapture test]`, version name `1.1.1-pr28-tabcapture`, and a popup `[PR28 tabCapture]` marker;
+- rebuild after deleting `extension/dist` to rule out stale generated assets before attributing the PiP to the site/browser.
+
+Second PR #28 manual attempt result:
+
+- the PR #28 build marker was visible, confirming the intended tabCapture branch was actually loaded;
+- no MediaGrabber PiP window was required;
+- Chrome showed its tab/screen sharing-style capture indicator, consistent with an active `tabCapture` stream;
+- MSE download/capture continued while the user switched to another browser tab.
+
+Interpretation:
+
+- hidden offscreen consumption of the tabCapture stream is sufficient to prevent the previously observed same-browser background-tab stall on the tested player;
+- this does not yet prove behavior when another maximized application fully occludes the browser window.
+
+Full native-window occlusion result:
+
+- while another maximized application completely covered the browser window, the MSE download/capture continued progressing normally.
+
+Confirmed interpretation:
+
+- on the tested Windows/Chromium player, an active hidden offscreen-consumed `tabCapture` stream is sufficient to prevent the previously observed occlusion stall;
+- visible PiP is not required for this keep-alive behavior.
+
+Teardown validation result:
+
+- successful completion ended the Chrome tab-capture/share indicator;
+- Cancel ended the tab-capture/share indicator;
+- Cancel restored the original playback rate;
+- the player remained usable after cancellation.
+
+Final result:
+
+- PR #28 passed the full manual acceptance for the tested Windows/Chromium transformed-XHR MSE workflow;
+- the temporary PR28 build-identification markers were removed before merge preparation.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.

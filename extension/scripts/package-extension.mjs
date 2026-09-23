@@ -14,7 +14,7 @@ try {
     manifest.version = process.env.MEDIA_GRABBER_VERSION;
   }
   await writeFile(join(stagingPath, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  const bundleFiles = ['background.js', 'content.js', 'mse-inject.js', 'popup.js', 'settings.js'];
+  const bundleFiles = ['background.js', 'content.js', 'mse-inject.js', 'offscreen.js', 'popup.js', 'settings.js'];
   await mkdir(join(stagingPath, 'dist'));
   for (const file of bundleFiles) {
     await copyFile(join(extensionRoot, 'dist', file), join(stagingPath, 'dist', file));
@@ -24,6 +24,11 @@ try {
     recursive: true,
     filter: (source) => source.endsWith(`${join('src', 'popup')}`) || /\.(html|css)$/.test(source)
   });
+  await mkdir(join(stagingPath, 'src', 'offscreen'), { recursive: true });
+  await copyFile(
+    join(extensionRoot, 'src', 'offscreen', 'offscreen.html'),
+    join(stagingPath, 'src', 'offscreen', 'offscreen.html')
+  );
 
   const archiveCommand = process.platform === 'win32'
     ? [

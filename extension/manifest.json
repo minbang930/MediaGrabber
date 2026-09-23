@@ -11,6 +11,8 @@
     "nativeMessaging",
     "tabs",
     "activeTab",
+    "offscreen",
+    "tabCapture",
     "webRequest",
     "notifications"
   ],

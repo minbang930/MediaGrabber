@@ -11,7 +11,7 @@ Last reviewed: 2026-09-24
 - Upstream main was at the same SHA when checked on 2026-09-23.
 - Package and manifest version: 1.1.1.
 - No open PRs existed in the fork at bootstrap time.
-- Current `main` after the MSE capture merge: `19206681b33e987a1f08ef65ffa087c6264eda4f` (PR #22).
+- Current `main`: `a235da338e596986c2bca92bbe85d705faa5fabc` (PR #24 docs handoff after the PR #22 MSE capture merge).
 
 ## Implemented runtime
 
@@ -69,7 +69,8 @@ Details and observations are in EXPERIMENTS.md.
 4. A separate tested site returns "Download failed with HTTP 404" on direct download. The exact server-side cause is not yet proven.
 5. The code currently sends no saved request headers in the direct-download call. startDownload() passes URL, directory, and filename to downloads.download; the CoApp supports custom headers, but the extension does not currently provide them on that path. This is a plausible compatibility gap for referer/origin/auth-sensitive URLs, not yet a proven cause of the observed 404.
 6. The previous MSE blob/`All Segments` path is not viable for the tested transformed-XHR player. PR #22 merged an explicit capture session: reload once, spool clear fMP4 appends per SourceBuffer to CoApp temporary files, mux with FFmpeg, and accelerate chronological playback up to 8× during capture. User validation passed end-to-end, including normal playback, accelerated capture, final mux/output, cancellation, rate restoration, and temporary-file cleanup. This is evidence for the tested transport, not a universal MSE support claim.
-7. Some FFmpeg compatibility errors surfaced to users are currently Russian-language strings in background.ts.
+7. PR #28 validates a hidden video-only `tabCapture` keep-alive consumed in an offscreen extension document. On the tested Windows/Chromium player, MSE capture continues both in another browser tab and while another maximized application fully occludes the browser, without visible PiP. Success and Cancel both end the browser capture indicator/stream; Cancel also restores the original playback rate.
+8. Some FFmpeg compatibility errors surfaced to users are currently Russian-language strings in background.ts.
 
 ## MSE hook risk area
 
