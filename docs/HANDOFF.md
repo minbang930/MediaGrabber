@@ -32,10 +32,9 @@ The active compatibility problem is again the separate direct-download HTTP 404.
 
 ## Next actions
 
-1. Verify post-merge `main` CI for commit `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
-2. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, URL freshness/redirect behavior, and whether the detected URL is intermediate/non-download.
-3. Only if needed, determine the minimum non-sensitive request context required; do not copy cookies, authorization tokens, or broad browser headers by default.
-4. Preserve the validated MSE player behavior, tabCapture privacy boundary, and DRM boundary while making unrelated compatibility changes.
+1. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, URL freshness/redirect behavior, and whether the detected URL is intermediate/non-download.
+2. Only if needed, determine the minimum non-sensitive request context required; do not copy cookies, authorization tokens, or broad browser headers by default.
+3. Preserve the validated MSE player behavior, tabCapture privacy boundary, and DRM boundary while making unrelated compatibility changes.
 
 ## Start here
 
