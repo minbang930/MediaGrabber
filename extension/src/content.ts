@@ -157,7 +157,8 @@ class MediaDetector {
               type: 'MSE_CAPTURE_ACCELERATION',
               sessionId: this.mseCaptureSessionId,
               requestedRate: Number(msg.requestedRate) || 1,
-              effectiveRate: Number(msg.effectiveRate) || 1
+              effectiveRate: Number(msg.effectiveRate) || 1,
+              targetMode: String(msg.targetMode || 'unknown')
             });
           }
           break;
