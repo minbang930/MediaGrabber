@@ -20,9 +20,10 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Build/load `fix/filter-image-hls` and confirm playback remains normal.
-2. Confirm the popup now shows the MSE candidate instead of the image-only HLS entry.
-3. Attempt the MSE download and record whether it produces the full video or only partial fragments; this determines the next reconstruction fix.
+1. Build the extension and the modified CoApp from `fix/mse-append-capture`; install the branch CoApp binary because the previously installed release CoApp does not contain the new capture RPC.
+2. Load/reload the branch extension, open the tested page, and confirm ordinary playback remains normal before starting a download.
+3. Select the MSE item and press Download. The tab should reload once; start playback from the beginning and let it run until the media/source ends.
+4. Verify that the Downloads output is a complete playable file with both video and audio. If it fails, record only the visible MediaGrabber error; do not expose page request credentials or source URLs.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
