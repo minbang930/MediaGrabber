@@ -46,6 +46,7 @@ export interface VideoInfo {
   thumbnail?: string;
   duration?: number;
   fileSize?: number;
+  diagnosticSegmentClasses?: string;
 }
 
 export interface DownloadProgress {
