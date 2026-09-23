@@ -146,7 +146,18 @@ Experiment on branch `fix/hls-extensionless-segments`:
 - for rewritten temporary local manifests, additionally allow `file` because the CoApp materializes the manifest on disk;
 - do not relax the extension policy for DASH/direct/yt-dlp paths.
 
-Status: implementation complete on the branch, real-site validation pending.
+Result sequence after the branch was tested:
+
+- playback remained normal;
+- the prior terminal `invalid-data` changed to `Output file does not contain any stream`;
+- structure diagnostic: HLS v6 media, 1118 nonstandard-extension segments, AES-128/identity, no init map, no byte ranges, no LL-HLS parts/preload hints, no I-frame-only mode;
+- browser-response diagnostic: dozens of known segment requests return HTTP 200 during normal playback; observed MIME is `text/plain` and Content-Length is absent;
+- request-context diagnostic: segment/key requests have Referer + Origin, but no Cookie, Authorization, or Range;
+- header-value diagnostic: observed segment Referer and Origin exactly match the values MediaGrabber supplies to FFmpeg (34/34 each).
+
+Interpretation: HTTP request-context mismatch is no longer the leading cause. The next question is what media format FFmpeg sees after the HLS AES-128 layer decrypts the first segment.
+
+Follow-up branch `diag/hls-segment-probe` adds `-loglevel debug` only to the HLS conversion path, then reduces stderr to safe counters: probed child-format names and scores, low-score detections, HLS request count, crypto-open count, maximum observed stream count, and stream-line count. Raw debug output and URLs are not shown to the user.
 
 ## Candidate reconstruction issue
 
