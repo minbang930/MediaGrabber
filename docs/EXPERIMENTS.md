@@ -139,6 +139,8 @@ Interpretation: the extension can fetch and parse a large media playlist, and th
 
 Leading compatibility hypothesis: newer FFmpeg releases tightened HLS segment-extension validation. Extensionless or otherwise nonstandard segment URLs can produce `AVERROR_INVALIDDATA` when `extension_picky` is enabled. This is a strong match to the observed failure but remains a hypothesis until the fix is validated on the real site.
 
+External reference: FFmpeg-devel's January 2025 HLS patch added stricter segment-extension checks and an `extension_picky` option in response to CVE-2023-6602; later 2025 discussion records compatibility exceptions. See https://ffmpeg.org/pipermail/ffmpeg-devel/2025-January/338447.html and https://ffmpeg.org/pipermail/ffmpeg-devel/2025-August/347334.html.
+
 Experiment on branch `fix/hls-extensionless-segments`:
 
 - apply `-extension_picky 0` only to HLS inputs;
