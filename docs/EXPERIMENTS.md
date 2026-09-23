@@ -75,6 +75,25 @@ Next experiment:
 5. Verify player playback.
 6. Only after playback passes, inspect stream grouping and full download.
 
+## 2026-09-23 — Minimize XHR interception
+
+Purpose: keep MSE/relay observation while reducing the chance that MediaGrabber changes player-visible XMLHttpRequest behavior.
+
+Change on branch `fix/minimize-xhr-hook`:
+
+- removed replacement of `window.XMLHttpRequest`;
+- removed per-instance redefinition of `onload`, `onreadystatechange`, and `onloadend`;
+- retained `XMLHttpRequest.prototype.open` only;
+- after native `open` succeeds, attach a normal one-shot `loadend` listener for relay mapping;
+- retained existing segment URL reporting.
+
+Verification performed by the agent:
+
+- attempted full clone/build, but the execution environment could not resolve github.com;
+- isolated TypeScript type-check of the modified XHR hook against DOM typings passed.
+
+Result: user manual validation confirmed that the previously broken player now plays normally with the injector enabled. The popup still shows roughly 14 media entries. Conclusion: minimizing XHR interception fixed the observed playback regression, while fragment grouping remains a separate issue to investigate next.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
