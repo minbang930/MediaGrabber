@@ -49,11 +49,12 @@ Last reviewed: 2026-09-24
 
 ## Build and verification state
 
-- There is no automated test suite.
-- There is no lint script.
-- There is no PR or push CI workflow; only the tag-triggered release workflow exists.
-- README and the previous agent notes define a successful npm run build as the current local verification baseline.
+- PR #22 adds deterministic Node 22 tests for MSE capture session IDs and ordered fragment/chunk completeness using the same core writer used by the CoApp runtime.
+- PR #22 adds `.github/workflows/ci.yml` for pull requests and pushes to `main`; it runs `npm ci`, full build, CoApp tests, and extension package smoke verification on Windows/Node 22.
+- There is still no lint script.
+- The tag-triggered Windows release workflow remains separate.
 - npm run dev:extension is currently broken because extension/package.json has no watch script.
+- Latest PR #22 CI result is pending.
 
 ## Known compatibility findings
 
