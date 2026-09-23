@@ -30,6 +30,7 @@ const sessions = new Map<string, CaptureSession>();
 const SESSION_RE = /^[A-Za-z0-9_-]{1,96}$/;
 const MAX_TRACKS = 4;
 const MAX_CHUNKS_PER_FRAGMENT = 256;
+const MAX_PENDING_FRAGMENTS = 64;
 const MAX_BASE64_CHUNK_LENGTH = 1024 * 1024;
 
 function assertSessionId(sessionId: string): void {
@@ -136,6 +137,9 @@ rpc.listen({
 
     let fragment = track.pending.get(fragmentIndex);
     if (!fragment) {
+      if (track.pending.size >= MAX_PENDING_FRAGMENTS) {
+        throw new Error('Too many pending MSE capture fragments');
+      }
       fragment = { chunkCount, chunks: new Array(chunkCount) };
       track.pending.set(fragmentIndex, fragment);
     }
@@ -190,5 +194,15 @@ rpc.listen({
     return { success: true };
   }
 });
+
+function cleanupAllSessions(): void {
+  for (const sessionId of Array.from(sessions.keys())) {
+    cleanupSession(sessionId);
+  }
+}
+
+process.on('SIGINT', cleanupAllSessions);
+process.on('SIGTERM', cleanupAllSessions);
+process.on('exit', cleanupAllSessions);
 
 console.error('[MediaGrabber CoApp] MSE capture module loaded');
