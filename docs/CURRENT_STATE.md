@@ -102,7 +102,7 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- Does the HLS candidate succeed when extension matching is relaxed only for HLS inputs under a constrained protocol whitelist?
-- If not, what HLS tag or segment format causes FFmpeg's `invalid-data` result despite successful browser-side playlist parsing?
+- Is the visible HLS actually an image/thumbnail playlist, as the `image2` child probe suggests?
+- Does the full media inventory contain a hidden `mse` or other candidate suppressed by the duration-first popup filter?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
