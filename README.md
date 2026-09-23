@@ -30,14 +30,14 @@ Why another downloader? MediaGrabber is intended to make stream detection, quali
 
 - **Detects common web media delivery patterns.** HLS streams (.m3u8), DASH manifests (.mpd), direct MP4/WebM files, and MSE/blob-based media where the current hooks are compatible.
 - **Quality selection that actually works.** Pick from every variant in the manifest — 240p through 4K. Separate entries for audio tracks and subtitles when the stream offers them.
-- **YouTube support.** Full quality selection via yt-dlp integration. No, not just 360p and 720p. Everything the video was uploaded in.
+- **YouTube support via yt-dlp.** Available formats are discovered by the bundled/current yt-dlp behavior and can change as the site changes.
 - **Progress you can see.** Badge counter on the icon, download progress in the popup, optional desktop notifications.
-- **No tracking, no analytics, no funny business.** The only thing that leaves your machine are the video files you ask for.
+- **No analytics or tracking code in the project.** Media downloads, yt-dlp requests, and installer runtime downloads still make the network requests required for those operations.
 
 ### Quick start
 
 ```bash
-git clone https://github.com/miroshArtem/MediaGrabber.git
+git clone https://github.com/minbang930/MediaGrabber.git
 cd MediaGrabber
 npm install
 npm run build
@@ -47,7 +47,7 @@ Then head to [Loading the extension](#loading-the-extension) and you're off.
 
 ### Release installation
 
-The production distribution uses [GitHub Releases](https://github.com/miroshArtem/MediaGrabber/releases/latest) for both the extension and native companion. The installer places CoApp, FFmpeg, ffprobe, and yt-dlp in a user-local MediaGrabber directory and registers native messaging automatically.
+The upstream baseline currently provides the published [GitHub Releases](https://github.com/miroshArtem/MediaGrabber/releases/latest). This fork has not published an independent release yet, so source builds are authoritative for fork-only changes. The installer places CoApp, FFmpeg, ffprobe, and yt-dlp in a user-local MediaGrabber directory and registers native messaging automatically.
 
 #### Windows x64 installation
 
