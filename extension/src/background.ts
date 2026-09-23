@@ -194,6 +194,7 @@ const mseCaptureByTab = new Map<number, MseCaptureSession>();
 
 // Popup connections
 const popupPorts = new Set<chrome.runtime.Port>();
+const popupTabIds = new Map<chrome.runtime.Port, number>();
 
 // Default download directory (sent by CoApp or fallback)
 let defaultDownloadDir = '';
@@ -757,6 +758,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
     port.onDisconnect.addListener(() => {
       popupPorts.delete(port);
+      popupTabIds.delete(port);
     });
   }
 });
@@ -765,17 +767,21 @@ function handlePopupMessage(port: chrome.runtime.Port, msg: any): void {
   switch (msg.type) {
     case 'GET_MEDIA':
       if (typeof msg.tabId === 'number') {
+        popupTabIds.set(port, msg.tabId);
         const videos = getVisibleVideosForTab(msg.tabId);
         port.postMessage({ type: 'MEDIA_LIST', videos });
       } else {
         chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-          const videos = tabs[0]?.id ? getVisibleVideosForTab(tabs[0].id) : [];
+          const tabId = tabs[0]?.id;
+          if (typeof tabId === 'number') popupTabIds.set(port, tabId);
+          const videos = typeof tabId === 'number' ? getVisibleVideosForTab(tabId) : [];
           port.postMessage({ type: 'MEDIA_LIST', videos });
         });
       }
       break;
 
     case 'DOWNLOAD':
+      if (typeof msg.tabId === 'number') popupTabIds.set(port, msg.tabId);
       startDownload(msg.video, msg.filename, msg.tabId)
         .then(result => port.postMessage({ type: 'DOWNLOAD_STARTED', ...result }))
         .catch(err => port.postMessage({ type: 'ERROR', message: err.message }));
@@ -789,6 +795,7 @@ function handlePopupMessage(port: chrome.runtime.Port, msg: any): void {
 
     case 'GET_ACTIVE_DOWNLOAD': {
       const tabId = msg.tabId;
+      if (typeof tabId === 'number') popupTabIds.set(port, tabId);
       const entry = [...activeDownloads.entries()].find(([, dl]) => dl.tabId === tabId);
       if (entry) {
         const [key, dl] = entry;
@@ -807,13 +814,19 @@ function handlePopupMessage(port: chrome.runtime.Port, msg: any): void {
   }
 }
 
+function forEachPopupForTab(tabId: number | undefined, callback: (port: chrome.runtime.Port) => void): void {
+  popupPorts.forEach((port) => {
+    if (tabId === undefined || popupTabIds.get(port) === tabId) {
+      callback(port);
+    }
+  });
+}
+
 function notifyPopups(tabId: number): void {
   const videos = getVisibleVideosForTab(tabId);
-  if (videos) {
-    popupPorts.forEach(port => {
-      port.postMessage({ type: 'MEDIA_LIST', videos });
-    });
-  }
+  forEachPopupForTab(tabId, (port) => {
+    port.postMessage({ type: 'MEDIA_LIST', videos });
+  });
 }
 
 // --- Download orchestration ---
