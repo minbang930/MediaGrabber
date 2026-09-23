@@ -364,15 +364,7 @@ function bucketContentLength(length?: number): string {
 
 function sanitizeDiagnosticContentType(contentType: string): string {
   if (!contentType) return 'missing';
-  return /^[a-z0-9!#function getContentType(headers?: chrome.webRequest.HttpHeader[]): string {
-  const header = headers?.find((item) => item.name.toLowerCase() === 'content-type');
-  return (header?.value || '').split(';', 1)[0].trim().toLowerCase();
-}
-^_.+\-]+\/[a-z0-9!#function getContentType(headers?: chrome.webRequest.HttpHeader[]): string {
-  const header = headers?.find((item) => item.name.toLowerCase() === 'content-type');
-  return (header?.value || '').split(';', 1)[0].trim().toLowerCase();
-}
-^_.+\-]+$/i.test(contentType)
+  return /^[a-z0-9.+_-]+\/[a-z0-9.+_-]+$/i.test(contentType)
     ? contentType.toLowerCase()
     : 'other';
 }
