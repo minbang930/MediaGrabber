@@ -14,6 +14,7 @@
     segmentCount: 0,
     segmentUrls: [] as string[],
     initSegmentUrl: null,
+    sourceBufferCount: 0,
     duration: 0
   };
 
@@ -38,6 +39,7 @@
     MSE_STATE.segmentCount = 0;
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
+    MSE_STATE.sourceBufferCount = 0;
     MSE_STATE.duration = 0;
   }
 
@@ -144,13 +146,15 @@
   MediaSource.prototype.addSourceBuffer = function(mimeType: string): SourceBuffer {
     const generation = mediaSourceGenerations.get(this) ?? pageGeneration;
     if (isVideoMime(mimeType) && generation === pageGeneration) {
+      MSE_STATE.sourceBufferCount++;
       MSE_STATE.mimeType = mimeType;
       MSE_STATE.codecs = extractCodecs(mimeType);
       postToContentScript({
         type: 'source-buffer',
         blobUrl: MSE_STATE.blobUrl,
         mimeType,
-        codecs: MSE_STATE.codecs
+        codecs: MSE_STATE.codecs,
+        sourceBufferCount: MSE_STATE.sourceBufferCount
       });
     }
     const sourceBuffer = origAddSourceBuffer.call(this, mimeType);
@@ -179,7 +183,10 @@
           mimeType: MSE_STATE.mimeType,
           codecs: MSE_STATE.codecs,
           totalBytes: MSE_STATE.totalBytes,
-          segmentCount: MSE_STATE.segmentCount
+          segmentCount: MSE_STATE.segmentCount,
+          sourceBufferCount: MSE_STATE.sourceBufferCount,
+          capturedUrlCount: MSE_STATE.segmentUrls.length,
+          injectorHasInit: Boolean(MSE_STATE.initSegmentUrl)
         });
       }
 
@@ -188,7 +195,10 @@
           type: 'progress',
           blobUrl: MSE_STATE.blobUrl,
           totalBytes: MSE_STATE.totalBytes,
-          segmentCount: MSE_STATE.segmentCount
+          segmentCount: MSE_STATE.segmentCount,
+          sourceBufferCount: MSE_STATE.sourceBufferCount,
+          capturedUrlCount: MSE_STATE.segmentUrls.length,
+          injectorHasInit: Boolean(MSE_STATE.initSegmentUrl)
         });
       }
     } catch {}
@@ -228,7 +238,8 @@
         type: 'segment-url',
         url,
         isInit: url.indexOf('init') >= 0,
-        totalUrls: MSE_STATE.segmentUrls.length
+        totalUrls: MSE_STATE.segmentUrls.length,
+        injectorHasInit: Boolean(MSE_STATE.initSegmentUrl)
       }, generation);
     }
     return origFetch.apply(this, arguments as any);
@@ -254,7 +265,8 @@
         type: 'segment-url',
         url: originalUrl,
         isInit: originalUrl.indexOf('init') >= 0,
-        totalUrls: MSE_STATE.segmentUrls.length
+        totalUrls: MSE_STATE.segmentUrls.length,
+        injectorHasInit: Boolean(MSE_STATE.initSegmentUrl)
       }, generation);
     }
 
