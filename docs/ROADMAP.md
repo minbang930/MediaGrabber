@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Build and real-site validate `fix/mse-append-capture`, including normal pre-download playback, capture-start reload behavior, full-length audio/video output, cancellation, and temp-file cleanup.
-- Keep the append-capture PR draft until the branch CoApp and extension are tested together; the installed release CoApp lacks the new capture RPC.
-- If the capture output is valid, add deterministic coverage for chunk ordering/session validation and then merge the MSE reconstruction path.
+- Complete remaining PR #22 acceptance: cancellation and temporary-file cleanup validation, plus deterministic coverage for chunk ordering/session validation.
+- Evaluate a safer UX improvement so users do not need to watch the video in real time: candidate directions include player-driven preload/fast playback only if they preserve player semantics and capture completeness; do not assume seeking loads skipped fragments.
+- Merge the MSE reconstruction path only after those checks.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
