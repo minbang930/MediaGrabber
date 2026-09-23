@@ -125,7 +125,7 @@ Diagnostic-only change:
 - do not expose query strings, cookies, headers, or authorization material;
 - do not change filtering, grouping, or download behavior.
 
-Status: awaiting one manual popup summary from the same test site.
+Observed popup summary: `direct/content:dom × 13, hls/webRequest:content-type × 1`. The 13 noisy entries therefore come from the DOM/content-script path, while one HLS entry comes from response Content-Type detection. Because `direct/content:dom` may still be either a non-HTTP browser URL or an extensionless HTTP(S) URL, the diagnostic now also shows URL scheme only. Status: awaiting one scheme-level summary.
 
 ## Candidate reconstruction issue
 
