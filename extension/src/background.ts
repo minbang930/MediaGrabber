@@ -371,6 +371,45 @@ function isMediaUrl(url: URL): boolean {
   return false;
 }
 
+function classifyHlsSegmentClasses(segments?: string[]): string | undefined {
+  if (!segments || segments.length === 0) return undefined;
+
+  const counts = new Map<string, number>();
+  for (const segment of segments) {
+    let cls = 'other';
+    try {
+      const path = new URL(segment).pathname.toLowerCase();
+      const name = path.slice(path.lastIndexOf('/') + 1);
+      const dot = name.lastIndexOf('.');
+      const ext = dot >= 0 ? name.slice(dot + 1) : '';
+
+      if (!ext) cls = 'extensionless';
+      else if (/^(jpg|jpeg|png|webp|avif|gif|bmp|jxl)$/.test(ext)) cls = 'image';
+      else if (/^(ts|m2ts|mts|m4s|mp4|m4a|aac|ac3|eac3|mp3|opus|ogg|webm|mkv|mov|cmfv|cmfa)$/.test(ext)) cls = 'media';
+      else if (/^(vtt|webvtt|srt|ttml)$/.test(ext)) cls = 'subtitle';
+    } catch {
+      cls = 'invalid';
+    }
+    counts.set(cls, (counts.get(cls) || 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([cls, count]) => `${cls}:${count}`)
+    .join(',');
+}
+
+function summarizeMediaTypes(videos: VideoInfo[]): string {
+  const counts = new Map<string, number>();
+  for (const video of videos) {
+    counts.set(video.type, (counts.get(video.type) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([type, count]) => `${type}:${count}`)
+    .join(',');
+}
+
 function getMediaType(url: string): VideoInfo['type'] {
   const path = new URL(url).pathname.toLowerCase();
   if (path.includes('.m3u8')) return 'hls';
@@ -538,12 +577,14 @@ async function handleInterceptedMedia(
   let childUrls: string[] | undefined;
   let duration: number | undefined;
   let fileSize: number | undefined;
+  let diagnosticSegmentClasses: string | undefined;
 
   if (type === 'hls') {
     try {
       const parsed = await M3U8ParserWrapper.fetchAndParse(url, referer);
       duration = parsed.duration;
       childUrls = parsed.childUrls;
+      diagnosticSegmentClasses = classifyHlsSegmentClasses(parsed.segments);
 
       const audioRenditions = (parsed.mediaRenditions || [])
         .filter((r) => r.type.toUpperCase() === 'AUDIO');
@@ -703,7 +744,8 @@ async function handleInterceptedMedia(
     referer,
     duration: duration || metadata?.duration,
     thumbnail: metadata?.thumbnail,
-    fileSize
+    fileSize,
+    diagnosticSegmentClasses
   });
 
   console.log('[MediaGrabber] Intercepted media:', url, type);
@@ -729,12 +771,41 @@ function handlePopupMessage(port: chrome.runtime.Port, msg: any): void {
   switch (msg.type) {
     case 'GET_MEDIA':
       if (typeof msg.tabId === 'number') {
+        const allVideos = mediaByTab.get(msg.tabId) || [];
         const videos = getVisibleVideosForTab(msg.tabId);
-        port.postMessage({ type: 'MEDIA_LIST', videos });
+        const visibleIds = new Set(videos.map((video) => video.id));
+        const hiddenVideos = allVideos.filter((video) => !visibleIds.has(video.id));
+        port.postMessage({
+          type: 'MEDIA_LIST',
+          videos,
+          diagnosticInventory: {
+            total: allVideos.length,
+            hiddenTypes: summarizeMediaTypes(hiddenVideos),
+            hlsSegments: videos
+              .filter((video) => video.type === 'hls' && video.diagnosticSegmentClasses)
+              .map((video) => video.diagnosticSegmentClasses)
+              .join('|')
+          }
+        });
       } else {
         chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-          const videos = tabs[0]?.id ? getVisibleVideosForTab(tabs[0].id) : [];
-          port.postMessage({ type: 'MEDIA_LIST', videos });
+          const tabId = tabs[0]?.id;
+          const allVideos = tabId ? (mediaByTab.get(tabId) || []) : [];
+          const videos = tabId ? getVisibleVideosForTab(tabId) : [];
+          const visibleIds = new Set(videos.map((video) => video.id));
+          const hiddenVideos = allVideos.filter((video) => !visibleIds.has(video.id));
+          port.postMessage({
+            type: 'MEDIA_LIST',
+            videos,
+            diagnosticInventory: {
+              total: allVideos.length,
+              hiddenTypes: summarizeMediaTypes(hiddenVideos),
+              hlsSegments: videos
+                .filter((video) => video.type === 'hls' && video.diagnosticSegmentClasses)
+                .map((video) => video.diagnosticSegmentClasses)
+                .join('|')
+            }
+          });
         });
       }
       break;
