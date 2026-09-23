@@ -20,9 +20,9 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Build/load `fix/hls-extensionless-segments` and confirm playback remains normal.
-2. Retry the single HLS entry and record whether the download starts/completes.
-3. If it fails, record the visible error text only; do not share signed URLs, cookies, or authorization headers.
+1. Build/load `diag/hls-request-context` (it includes PR #8), reload the page, and play from the beginning for several seconds.
+2. Retry the single HLS entry.
+3. Report only the appended `Browser HLS request context:` line; do not share signed URLs or any header values.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
