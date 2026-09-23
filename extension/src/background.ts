@@ -827,6 +827,155 @@ function formatFfmpegError(exitCode: number | null, stderr: string): string {
   return `FFmpeg exit code ${exitCode}: ${details.slice(-1000)}`;
 }
 
+interface HlsStructureDiagnostic {
+  fetch: 'ok' | 'error';
+  playlist: 'master' | 'media' | 'unknown';
+  segments: number;
+  segmentExtensions: string;
+  hasMap: boolean;
+  hasByteRange: boolean;
+  hasParts: boolean;
+  hasPreloadHint: boolean;
+  iFramesOnly: boolean;
+  hasEndList: boolean;
+  version?: number;
+  encryption: 'none' | 'aes-128' | 'sample-aes' | 'sample-aes-ctr' | 'other' | 'mixed';
+  keyFormat: 'none' | 'identity' | 'non-identity' | 'mixed';
+}
+
+function classifySegmentExtension(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const last = path.slice(path.lastIndexOf('/') + 1);
+    const dot = last.lastIndexOf('.');
+    if (dot <= 0 || dot === last.length - 1) return 'none';
+    const ext = last.slice(dot + 1).toLowerCase();
+    if (/^(ts|m4s|mp4|m4a|aac|vtt|webvtt|cmfv|cmfa|fmp4)$/.test(ext)) return ext;
+    return 'other';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function classifyHlsEncryption(manifest: string): {
+  encryption: HlsStructureDiagnostic['encryption'];
+  keyFormat: HlsStructureDiagnostic['keyFormat'];
+} {
+  const keyLines = manifest.split(/\r?\n/).filter(line => line.trim().startsWith('#EXT-X-KEY:'));
+  if (keyLines.length === 0) return { encryption: 'none', keyFormat: 'none' };
+
+  const methods = new Set<string>();
+  const formats = new Set<string>();
+
+  for (const line of keyLines) {
+    const method = line.match(/(?:^|,)METHOD=([^,]+)/)?.[1]?.trim().toUpperCase();
+    if (method && method !== 'NONE') methods.add(method);
+
+    const format = line.match(/(?:^|,)KEYFORMAT="([^"]+)"/i)?.[1]?.trim().toLowerCase();
+    formats.add(!format || format === 'identity' ? 'identity' : 'non-identity');
+  }
+
+  let encryption: HlsStructureDiagnostic['encryption'] = 'none';
+  if (methods.size > 1) {
+    encryption = 'mixed';
+  } else {
+    const method = Array.from(methods)[0];
+    if (method === 'AES-128') encryption = 'aes-128';
+    else if (method === 'SAMPLE-AES') encryption = 'sample-aes';
+    else if (method === 'SAMPLE-AES-CTR') encryption = 'sample-aes-ctr';
+    else if (method) encryption = 'other';
+  }
+
+  let keyFormat: HlsStructureDiagnostic['keyFormat'] = 'none';
+  if (formats.size > 1) keyFormat = 'mixed';
+  else if (formats.has('non-identity')) keyFormat = 'non-identity';
+  else if (formats.has('identity')) keyFormat = 'identity';
+
+  return { encryption, keyFormat };
+}
+
+async function inspectHlsStructure(inputUrl: string, referer?: string): Promise<HlsStructureDiagnostic> {
+  try {
+    const parsed = await M3U8ParserWrapper.fetchAndParse(inputUrl, referer);
+    const manifest = parsed.manifest || '';
+    const extCounts = new Map<string, number>();
+    for (const segment of parsed.segments || []) {
+      const key = classifySegmentExtension(segment);
+      extCounts.set(key, (extCounts.get(key) || 0) + 1);
+    }
+
+    const segmentExtensions = Array.from(extCounts.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([ext, count]) => `${ext}:${count}`)
+      .join(',') || 'none';
+
+    const versionMatch = manifest.match(/^#EXT-X-VERSION:(\d+)/m);
+    const encryption = classifyHlsEncryption(manifest);
+
+    return {
+      fetch: 'ok',
+      playlist: parsed.type,
+      segments: parsed.segments?.length || 0,
+      segmentExtensions,
+      hasMap: /^#EXT-X-MAP:/m.test(manifest),
+      hasByteRange: /^#EXT-X-BYTERANGE:/m.test(manifest),
+      hasParts: /^#EXT-X-PART:/m.test(manifest),
+      hasPreloadHint: /^#EXT-X-PRELOAD-HINT:/m.test(manifest),
+      iFramesOnly: /^#EXT-X-I-FRAMES-ONLY\s*$/m.test(manifest),
+      hasEndList: /^#EXT-X-ENDLIST\s*$/m.test(manifest),
+      version: versionMatch ? Number(versionMatch[1]) : undefined,
+      encryption: encryption.encryption,
+      keyFormat: encryption.keyFormat
+    };
+  } catch {
+    return {
+      fetch: 'error',
+      playlist: 'unknown',
+      segments: 0,
+      segmentExtensions: 'unknown',
+      hasMap: false,
+      hasByteRange: false,
+      hasParts: false,
+      hasPreloadHint: false,
+      iFramesOnly: false,
+      hasEndList: false,
+      encryption: 'none',
+      keyFormat: 'none'
+    };
+  }
+}
+
+function classifyFfmpegNoStreamFlags(stderr: string): string {
+  const flags: string[] = [];
+  if (/Output file does not contain any stream/i.test(stderr)) flags.push('no-stream');
+  if (/failed to open segment|error when loading first segment/i.test(stderr)) flags.push('segment-open');
+  if (/Could not find codec parameters/i.test(stderr)) flags.push('codec-params');
+  if (/unsupported codec|codec .* not supported/i.test(stderr)) flags.push('unsupported-codec');
+  if (/unable to open key|failed to open key|key file/i.test(stderr)) flags.push('key-open');
+  if (/decrypt|decryption|crypto/i.test(stderr)) flags.push('decrypt');
+  if (/Invalid data found/i.test(stderr)) flags.push('invalid-data');
+  return flags.join(',') || 'none';
+}
+
+function formatHlsStructureDiagnostic(diag: HlsStructureDiagnostic, stderr: string): string {
+  return [
+    `fetch=${diag.fetch}`,
+    `playlist=${diag.playlist}`,
+    `segments=${diag.segments}`,
+    `ext=${diag.segmentExtensions}`,
+    `map=${diag.hasMap ? 'yes' : 'no'}`,
+    `byterange=${diag.hasByteRange ? 'yes' : 'no'}`,
+    `parts=${diag.hasParts ? 'yes' : 'no'}`,
+    `preload=${diag.hasPreloadHint ? 'yes' : 'no'}`,
+    `iframesOnly=${diag.iFramesOnly ? 'yes' : 'no'}`,
+    `endlist=${diag.hasEndList ? 'yes' : 'no'}`,
+    `version=${diag.version ?? 'unknown'}`,
+    `encryption=${diag.encryption}`,
+    `keyFormat=${diag.keyFormat}`,
+    `ffmpeg=${classifyFfmpegNoStreamFlags(stderr)}`
+  ].join(' ');
+}
+
 interface ManifestFile {
   placeholder: string;
   content: string;
@@ -931,6 +1080,9 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
     const baseArgs = formatArgs && formatArgs.length > 0
       ? [...formatArgs, '-y', outputPath]
       : [...inputArgs, ...codecArg, '-y', outputPath];
+    const hlsStructure = type === 'hls'
+      ? await inspectHlsStructure(video.url, video.referer)
+      : undefined;
     const prepared = type === 'hls'
       ? await prepareHlsArguments(tabId ?? -1, baseArgs, video.referer)
       : { args: baseArgs, manifestFiles: [] };
@@ -956,7 +1108,11 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       } else {
         notify('Download failed', outFilename);
         popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: formatFfmpegError(result.exitCode, result.stderr) });
+          const baseError = formatFfmpegError(result.exitCode, result.stderr);
+          const error = type === 'hls' && hlsStructure
+            ? `${baseError}\nHLS structure: ${formatHlsStructureDiagnostic(hlsStructure, result.stderr)}`
+            : baseError;
+          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error });
         });
       }
       activeDownloads.delete(downloadKey);
