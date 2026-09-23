@@ -120,10 +120,11 @@ class MediaDetector {
             Number.isInteger(msg.chunkIndex) &&
             Number.isInteger(msg.chunkCount)
           ) {
-            const bytes = msg.bytes instanceof Uint8Array
-              ? msg.bytes
-              : msg.bytes?.buffer instanceof ArrayBuffer
-                ? new Uint8Array(msg.bytes.buffer, msg.bytes.byteOffset || 0, msg.bytes.byteLength || msg.bytes.buffer.byteLength)
+            const candidate = msg.bytes;
+            const bytes = ArrayBuffer.isView(candidate)
+              ? new Uint8Array(candidate.buffer, candidate.byteOffset, candidate.byteLength)
+              : Object.prototype.toString.call(candidate) === '[object ArrayBuffer]'
+                ? new Uint8Array(candidate)
                 : undefined;
             if (bytes) {
               const base64 = this.bytesToBase64(bytes);
