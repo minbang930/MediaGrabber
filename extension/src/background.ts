@@ -1179,6 +1179,21 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
     case 'PAGE_NAVIGATION':
       return handlePageNavigation(sender.tab?.id, message.pageUrl, message.generation, sender.frameId, sender.url, sender.tab?.url);
 
+    case 'MSE_CAPTURE_READY':
+      return handleMseCaptureReady(sender);
+
+    case 'MSE_CAPTURE_CHUNK':
+      return handleMseCaptureChunk(sender, message);
+
+    case 'MSE_CAPTURE_PROGRESS':
+      return handleMseCaptureProgress(sender, message);
+
+    case 'MSE_CAPTURE_FINISH':
+      return handleMseCaptureFinish(sender, message);
+
+    case 'MSE_CAPTURE_ERROR':
+      return handleMseCaptureError(sender, message);
+
     case 'GET_VIDEOS':
       return getVideosForTab(message.tabId);
 
@@ -1198,6 +1213,232 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
     default:
       return { error: `Unknown message type: ${message.type}` };
   }
+}
+
+function mseCaptureSenderMatches(
+  session: MseCaptureSession,
+  sender: chrome.runtime.MessageSender,
+  allowFrameRelock = false
+): boolean {
+  if (sender.tab?.id !== session.tabId) return false;
+  const frameId = sender.frameId ?? 0;
+
+  if (session.activeFrameId !== undefined && !allowFrameRelock) {
+    return frameId === session.activeFrameId;
+  }
+
+  if (session.sourceFrameId === 0) return frameId === 0;
+  if (session.sourceFrameUrl && sender.url === session.sourceFrameUrl) return true;
+  if (session.sourceFrameId !== undefined) return frameId === session.sourceFrameId;
+  return frameId === 0;
+}
+
+function handleMseCaptureReady(sender: chrome.runtime.MessageSender): any {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) return { active: false };
+
+  const session = mseCaptureByTab.get(tabId);
+  if (!session || session.finalizing) return { active: false };
+  if (!mseCaptureSenderMatches(session, sender, true)) return { active: false };
+
+  session.activeFrameId = sender.frameId ?? 0;
+  return { active: true, sessionId: session.sessionId };
+}
+
+async function handleMseCaptureChunk(sender: chrome.runtime.MessageSender, message: any): Promise<any> {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    session.finalizing ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  return nativeClient.mseCaptureAppend(
+    session.sessionId,
+    Number(message.trackId),
+    String(message.mime || ''),
+    Number(message.fragmentIndex),
+    Number(message.chunkIndex),
+    Number(message.chunkCount),
+    String(message.base64 || '')
+  );
+}
+
+function handleMseCaptureProgress(sender: chrome.runtime.MessageSender, message: any): any {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  const bytesReceived = Math.max(0, Number(message.bytes) || 0);
+  const dl = activeDownloads.get(session.downloadKey);
+  if (dl) {
+    dl.lastProgress = { percent: 0, bytesReceived, totalBytes: 0 };
+  }
+  popupPorts.forEach((port) => {
+    port.postMessage({
+      type: 'DOWNLOAD_PROGRESS',
+      downloadId: session.downloadKey,
+      progress: { percent: 0, bytesReceived, totalBytes: 0 }
+    });
+  });
+  return { success: true };
+}
+
+function buildMseMuxArgs(
+  tracks: Array<{ id: number; mime: string; path: string; bytes: number }>,
+  outputPath: string
+): string[] {
+  const args: string[] = [];
+  tracks.forEach((track) => {
+    args.push('-i', track.path);
+  });
+
+  const videoIndex = tracks.findIndex((track) => track.mime.startsWith('video/'));
+  const audioIndex = tracks.findIndex((track) => track.mime.startsWith('audio/'));
+  if (videoIndex < 0 && audioIndex < 0) {
+    throw new Error('Captured MSE tracks do not contain audio or video.');
+  }
+
+  if (videoIndex >= 0) args.push('-map', `${videoIndex}:v:0`);
+  if (audioIndex >= 0) args.push('-map', `${audioIndex}:a:0`);
+  args.push('-c', 'copy', '-movflags', '+faststart', '-y', outputPath);
+  return args;
+}
+
+function sendMseCaptureStop(session: MseCaptureSession): void {
+  const message = { type: 'MSE_CAPTURE_STOP', sessionId: session.sessionId };
+  try {
+    if (session.activeFrameId !== undefined) {
+      chrome.tabs.sendMessage(session.tabId, message, { frameId: session.activeFrameId }, () => {
+        void chrome.runtime.lastError;
+      });
+    } else {
+      chrome.tabs.sendMessage(session.tabId, message, () => {
+        void chrome.runtime.lastError;
+      });
+    }
+  } catch {
+    // The tab/frame may already be gone.
+  }
+}
+
+async function failMseCapture(session: MseCaptureSession, error: string, notifyPopup = true): Promise<void> {
+  sendMseCaptureStop(session);
+  mseCaptureByTab.delete(session.tabId);
+  try {
+    await nativeClient.mseCaptureAbort(session.sessionId);
+  } catch {
+    // Best-effort temporary-file cleanup.
+  }
+
+  activeDownloads.delete(session.downloadKey);
+  if (notifyPopup) {
+    popupPorts.forEach((port) => {
+      port.postMessage({
+        type: 'DOWNLOAD_ERROR',
+        downloadId: session.downloadKey,
+        error
+      });
+    });
+    notify('Download failed', error);
+  }
+}
+
+async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
+  if (session.finalizing) return;
+  session.finalizing = true;
+
+  const dl = activeDownloads.get(session.downloadKey);
+  if (!dl) {
+    await failMseCapture(session, 'MSE capture state was lost.');
+    return;
+  }
+
+  try {
+    const captured = await nativeClient.mseCaptureFinish(session.sessionId);
+    const args = buildMseMuxArgs(captured.tracks, session.outputPath);
+    const result = await nativeClient.convert(args, {
+      progressTime: 1000,
+      startHandler: session.downloadKey
+    });
+
+    if (result.exitCode !== 0) {
+      throw new Error(formatFfmpegError(result.exitCode, result.stderr));
+    }
+
+    popupPorts.forEach((port) => {
+      port.postMessage({
+        type: 'DOWNLOAD_COMPLETE',
+        downloadId: session.downloadKey,
+        outputPath: session.outputPath
+      });
+    });
+    notify('Download complete', dl.filename);
+    activeDownloads.delete(session.downloadKey);
+    mseCaptureByTab.delete(session.tabId);
+    await nativeClient.mseCaptureCleanup(session.sessionId);
+  } catch (error: any) {
+    await failMseCapture(
+      session,
+      error instanceof Error ? error.message : String(error)
+    );
+  }
+}
+
+async function handleMseCaptureFinish(sender: chrome.runtime.MessageSender, message: any): Promise<any> {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  await finalizeMseCapture(session);
+  return { success: true };
+}
+
+async function handleMseCaptureError(sender: chrome.runtime.MessageSender, message: any): Promise<any> {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  await failMseCapture(session, String(message.error || 'MSE capture failed'));
+  return { success: true };
+}
+
+async function abortMseCaptureForTab(tabId: number): Promise<void> {
+  const session = mseCaptureByTab.get(tabId);
+  if (!session) return;
+
+  const dl = activeDownloads.get(session.downloadKey);
+  if (dl?.pid !== undefined) {
+    try {
+      await nativeClient.abortConvert(dl.pid);
+    } catch {
+      // Conversion may already have exited.
+    }
+  }
+
+  await failMseCapture(session, 'MSE capture cancelled.', false);
 }
 
 function currentTopPageUrl(tabId: number, senderTabUrl?: string): string | undefined {
