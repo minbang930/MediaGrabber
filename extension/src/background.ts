@@ -37,6 +37,9 @@ interface HlsRequestPresence {
   range: number;
   referer: number;
   origin: number;
+  refererHashes: Record<string, number>;
+  refererOriginHashes: Record<string, number>;
+  originHashes: Record<string, number>;
 }
 
 interface HlsRequestContextSummary {
@@ -319,12 +322,34 @@ function createHlsRequestPresence(): HlsRequestPresence {
     authorization: 0,
     range: 0,
     referer: 0,
-    origin: 0
+    origin: 0,
+    refererHashes: {},
+    refererOriginHashes: {},
+    originHashes: {}
   };
 }
 
 function headerNames(headers?: chrome.webRequest.HttpHeader[]): Set<string> {
   return new Set((headers || []).map(header => header.name.toLowerCase()));
+}
+
+function getRequestHeaderValue(headers: chrome.webRequest.HttpHeader[] | undefined, name: string): string | undefined {
+  return headers?.find(header => header.name.toLowerCase() === name)?.value;
+}
+
+function incrementHashCount(target: Record<string, number>, value: string | undefined): void {
+  if (!value) return;
+  const key = hashDiagnosticUrl(value);
+  target[key] = (target[key] || 0) + 1;
+}
+
+function getUrlOrigin(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return undefined;
+  }
 }
 
 function observeHlsRequestContext(details: chrome.webRequest.WebRequestHeadersDetails): void {
@@ -349,6 +374,12 @@ function observeHlsRequestContext(details: chrome.webRequest.WebRequestHeadersDe
   if (names.has('range')) bucket.range += 1;
   if (names.has('referer')) bucket.referer += 1;
   if (names.has('origin')) bucket.origin += 1;
+
+  const refererValue = getRequestHeaderValue(details.requestHeaders, 'referer');
+  const originValue = getRequestHeaderValue(details.requestHeaders, 'origin');
+  incrementHashCount(bucket.refererHashes, refererValue);
+  incrementHashCount(bucket.refererOriginHashes, getUrlOrigin(refererValue));
+  incrementHashCount(bucket.originHashes, originValue);
 }
 
 function registerHlsRequestContextTargets(
@@ -390,29 +421,26 @@ function registerHlsRequestContextTargets(
   }
 }
 
-function formatPresence(label: string, present: number, seen: number): string {
-  return `${label}=${present}/${seen}`;
+function hashMatchCount(target: Record<string, number>, value: string | undefined): number {
+  if (!value) return 0;
+  return target[hashDiagnosticUrl(value)] || 0;
 }
 
-function formatHlsRequestContext(tabId: number): string {
+function formatHlsRequestContext(tabId: number, ffmpegReferer?: string): string {
   const summary = hlsRequestContextByTab.get(tabId);
   if (!summary) return 'segmentSeen=0 keySeen=0';
 
-  const s = summary.segment;
-  const k = summary.key;
+  const ffmpegOrigin = getUrlOrigin(ffmpegReferer);
+  const formatBucket = (prefix: string, bucket: HlsRequestPresence): string[] => [
+    `${prefix}Seen=${bucket.seen}`,
+    `${prefix}RefererExact=${hashMatchCount(bucket.refererHashes, ffmpegReferer)}/${bucket.seen}`,
+    `${prefix}RefererOrigin=${hashMatchCount(bucket.refererOriginHashes, ffmpegOrigin)}/${bucket.seen}`,
+    `${prefix}OriginExact=${hashMatchCount(bucket.originHashes, ffmpegOrigin)}/${bucket.seen}`
+  ];
+
   return [
-    `segmentSeen=${s.seen}`,
-    formatPresence('cookie', s.cookie, s.seen),
-    formatPresence('auth', s.authorization, s.seen),
-    formatPresence('range', s.range, s.seen),
-    formatPresence('referer', s.referer, s.seen),
-    formatPresence('origin', s.origin, s.seen),
-    `keySeen=${k.seen}`,
-    formatPresence('keyCookie', k.cookie, k.seen),
-    formatPresence('keyAuth', k.authorization, k.seen),
-    formatPresence('keyRange', k.range, k.seen),
-    formatPresence('keyReferer', k.referer, k.seen),
-    formatPresence('keyOrigin', k.origin, k.seen)
+    ...formatBucket('segment', summary.segment),
+    ...formatBucket('key', summary.key)
   ].join(' ');
 }
 
@@ -1101,7 +1129,7 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
         popupPorts.forEach(port => {
           const baseError = formatFfmpegError(result.exitCode, result.stderr);
           const error = type === 'hls'
-            ? `${baseError}\nBrowser HLS request context: ${formatHlsRequestContext(tabId ?? -1)}`
+            ? `${baseError}\nBrowser HLS header match: ${formatHlsRequestContext(tabId ?? -1, video.referer)}`
             : baseError;
           port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error });
         });
