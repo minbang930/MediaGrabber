@@ -107,7 +107,8 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - Draft PR #22 replaces the broken blob/URL FFmpeg path with explicit user-triggered post-transform MSE capture: reload once, capture per-SourceBuffer fragments to native temporary files, then mux the first video/audio tracks with FFmpeg.
 - First real-site validation confirmed capture arming and the one-time reload, but playback-to-end did not finalize into an output file. The same run exposed a confirmed cross-tab popup broadcast bug.
 - User validation confirmed the popup tab-scoping fix: media from other tabs no longer appears during capture. The capture still remained in a generic armed/downloading state after manual playback, so the exact stall point was not observable.
-- PR #22 now persists explicit capture lifecycle phases (`reload`, `frame-ready`, `hook-armed`, `first-fragment`, `capture`, `finalizing`) across popup reopen and reports the MAIN-world start acknowledgement to background.
-- Which lifecycle phase is the last one reached on the tested player, and does the revised capture path proceed to finalization/mux?
+- Lifecycle validation stopped at `reload`: the post-reload player frame never reached `frame-ready`. The cause was stale iframe identity—the session compared post-reload senders against the pre-reload `sourceFrameId`/exact frame URL.
+- PR #22 now arms post-reload frames in the selected tab as temporary candidates and locks the session only when the first actual MSE fragment arrives; other armed frames are stopped immediately after that lock.
+- Does the player now reach `frame-ready`/`hook-armed` and then capture fragments after playback starts?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
