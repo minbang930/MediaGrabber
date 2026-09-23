@@ -187,6 +187,7 @@ const activeDownloads = new Map<string, {
     fragments?: number;
     requestedRate?: number;
     effectiveRate?: number;
+    targetMode?: string;
   };
 }>();
 
@@ -1316,6 +1317,7 @@ function updateMseCapturePhase(
     fragments: number;
     requestedRate: number;
     effectiveRate: number;
+    targetMode: string;
   }> = {}
 ): void {
   const dl = activeDownloads.get(session.downloadKey);
@@ -1327,6 +1329,7 @@ function updateMseCapturePhase(
     fragments: extra.fragments ?? previous?.fragments ?? 0,
     requestedRate: extra.requestedRate ?? previous?.requestedRate,
     effectiveRate: extra.effectiveRate ?? previous?.effectiveRate,
+    targetMode: extra.targetMode ?? previous?.targetMode,
     capture: true,
     phase
   };
@@ -1446,8 +1449,9 @@ function handleMseCaptureAcceleration(sender: chrome.runtime.MessageSender, mess
 
   const requestedRate = Math.max(1, Number(message.requestedRate) || 1);
   const effectiveRate = Math.max(0, Number(message.effectiveRate) || 1);
+  const targetMode = String(message.targetMode || 'unknown');
   const currentPhase = activeDownloads.get(session.downloadKey)?.lastProgress?.phase || 'hook-armed';
-  updateMseCapturePhase(session, currentPhase, { requestedRate, effectiveRate });
+  updateMseCapturePhase(session, currentPhase, { requestedRate, effectiveRate, targetMode });
   return { success: true };
 }
 
