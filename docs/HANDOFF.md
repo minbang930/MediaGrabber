@@ -25,7 +25,7 @@ The separate direct-download HTTP 404 remains unresolved and follows this focuse
 ## Next actions
 
 1. CI has passed for the code change on Windows/Node 22: install, full build, CoApp tests, and extension package smoke check.
-2. Load PR #28's `exp/mse-tab-capture-keepalive` extension. CoApp replacement should not be needed because the experiment changes extension code only.
+2. Rebuild PR #28 after deleting `extension/dist`, then load the extension and verify the UI says `MediaGrabber [tabCapture test]` / `[PR28 tabCapture]`. CoApp replacement should not be needed.
 3. Start the tested MSE download, press Play once after reload, and confirm the popup says `background keep-alive active` with no PiP window.
 4. Fully cover the browser with another maximized application and confirm captured bytes/fragments continue increasing.
 5. Test Cancel and successful completion; confirm playback rate restores and the tab-capture state/indicator ends.
