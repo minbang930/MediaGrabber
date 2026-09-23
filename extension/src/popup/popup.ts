@@ -671,7 +671,8 @@ function updateProgressUI(progress: any): void {
         const fragments = typeof progress.fragments === 'number' ? progress.fragments : 0;
         const effectiveRate = typeof progress.effectiveRate === 'number' ? progress.effectiveRate : 0;
         const rateSuffix = effectiveRate > 1 ? ` · ${effectiveRate.toFixed(1)}×` : '';
-        updateStatus(`Capturing… ${captured} · ${fragments} fragments${rateSuffix}`, 'info');
+        const targetSuffix = progress.targetMode ? ` · target=${progress.targetMode}` : '';
+        updateStatus(`Capturing… ${captured} · ${fragments} fragments${rateSuffix}${targetSuffix}`, 'info');
         break;
       }
       case 'finalizing':
@@ -744,9 +745,10 @@ function updateProgressUI(progress: any): void {
   ) {
     const effective = progress.effectiveRate.toFixed(1);
     const requested = progress.requestedRate.toFixed(1);
+    const target = progress.targetMode ? ` · target=${progress.targetMode}` : '';
     speedEl.textContent = progress.effectiveRate === progress.requestedRate
-      ? `Playback: ${effective}×`
-      : `Playback: ${effective}× (requested ${requested}×)`;
+      ? `Playback: ${effective}×${target}`
+      : `Playback: ${effective}× (requested ${requested}×)${target}`;
   }
 
   if (etaEl && progress.eta) {
