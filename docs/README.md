@@ -1,36 +1,35 @@
-# Video DownloadHelper — Technical Documentation
+# MediaGrabber Documentation
 
-## Table of Contents
+This directory contains two kinds of documentation. Use the current-project set first for ongoing work.
 
-1. [Overview](./overview.md)
-2. [Architecture](./architecture.md)
-3. [Companion App (CoApp)](./coapp.md)
-4. [Native Messaging Protocol](./native-messaging.md)
-5. [FFmpeg Integration](./ffmpeg.md)
-6. [Video Detection](./detection.md)
-7. [Version History](./changelog.md)
+## Current project source of truth
 
----
+| Document | Responsibility |
+|---|---|
+| PROJECT.md | Stable project purpose, scope, users, and success criteria |
+| CURRENT_STATE.md | What the repository actually implements and what is known now |
+| HANDOFF.md | Short continuation note for the next session |
+| WORKING_STYLE.md | Durable user/agent collaboration rules |
+| ARCHITECTURE.md | Current MediaGrabber system structure and data flow |
+| DECISIONS.md | Important decisions and rationale |
+| ROADMAP.md | Planned priorities, separated from current facts |
+| EXPERIMENTS.md | Manual tests, observations, hypotheses, and compatibility results |
 
-## Quick Facts
+AGENTS.md at the repository root is the top-level operating instruction for AI agents and defines the required session bootstrap order.
 
-| Property | Value |
-|----------|-------|
-| **Developer** | Michel Gutierrez (mig), later Paul |
-| **Browser Support** | Firefox, Chrome, Edge |
-| **CoApp Status** | Open Source (GitHub: aclap-dev/vdhcoapp) |
-| **Extension Status** | Proprietary (closed source) |
-| **Written In** | JavaScript/Node.js (CoApp), WebExtensions API (Extension) |
-| **License** | Freemium |
+## Inherited research and reference material
 
----
+The pre-existing lowercase documents in this directory were written primarily as Video DownloadHelper research/reference material. They are preserved because they contain useful background, but they are not authoritative descriptions of this MediaGrabber fork.
 
-## Key Finding
+- architecture.md
+- coapp.md
+- detection.md
+- ffmpeg.md
+- native-messaging.md
+- quick-reference.md
+- youtube.md
+- changelog.md
 
-**The browser extension source code is NOT publicly available.** Only the Companion App (CoApp) is open source. The video-downloadhelper GitHub repository contains only store listing assets (screenshots, README).
+Other release, store, and privacy documents remain reference material where applicable.
 
-This documentation attempts to reconstruct the full picture from:
-- Open-source CoApp source code analysis
-- GitHub discussions and Wiki
-- Mozilla Add-ons blog post (2016)
-- Technical discussions and troubleshooting guides
+When a lowercase reference document conflicts with the current MediaGrabber source code or an uppercase current-project document, inspect the code and treat the verified current state as authoritative.
