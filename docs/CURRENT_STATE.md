@@ -69,7 +69,7 @@ Details and observations are in EXPERIMENTS.md.
 4. A separate tested site returns "Download failed with HTTP 404" on direct download. The exact server-side cause is not yet proven.
 5. The code currently sends no saved request headers in the direct-download call. startDownload() passes URL, directory, and filename to downloads.download; the CoApp supports custom headers, but the extension does not currently provide them on that path. This is a plausible compatibility gap for referer/origin/auth-sensitive URLs, not yet a proven cause of the observed 404.
 6. The previous MSE blob/`All Segments` path is not viable for the tested transformed-XHR player. PR #22 merged an explicit capture session: reload once, spool clear fMP4 appends per SourceBuffer to CoApp temporary files, mux with FFmpeg, and accelerate chronological playback up to 8× during capture. User validation passed end-to-end, including normal playback, accelerated capture, final mux/output, cancellation, rate restoration, and temporary-file cleanup. This is evidence for the tested transport, not a universal MSE support claim.
-7. Windows native-window occlusion is a confirmed UX constraint on the tested MSE player: a detached capture window stalls when fully covered; real-video PiP and synthetic helper PiP both keep capture progressing, but both leave a visible browser-managed PiP window. Draft PR #28 (`exp/mse-tab-capture-keepalive`) now tests hidden `tabCapture` as the next candidate.
+7. PR #28 validates a hidden video-only `tabCapture` keep-alive consumed in an offscreen extension document. On the tested Windows/Chromium player, MSE capture continues both in another browser tab and while another maximized application fully occludes the browser, without visible PiP. Success and Cancel both end the browser capture indicator/stream; Cancel also restores the original playback rate.
 8. Some FFmpeg compatibility errors surfaced to users are currently Russian-language strings in background.ts.
 
 ## MSE hook risk area
@@ -108,5 +108,4 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 - The separate direct-download test still returns HTTP 404. Does that path require a safe Referer/Origin context, another non-sensitive request property, or simply a fresher/intermediate URL?
 - The MSE append-capture path is validated on the tested transformed-XHR player, but broader compatibility remains evidence-driven; do not infer universal MSE support from this result.
-- PR #28 `tabCapture` keep-alive is manually confirmed to preserve MSE capture both when switching to another browser tab and when another maximized application fully occludes the browser window, without visible PiP. Success/Cancel teardown of the tab-capture indicator remains the final manual acceptance.
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
