@@ -20,6 +20,8 @@
   let pageGeneration = 0;
   const mediaSourceGenerations = new WeakMap<MediaSource, number>();
   const sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  const xhrSourceFormatCounts = new Map<string, number>();
+  let xhrArrayBufferCount = 0;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -39,6 +41,59 @@
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
     MSE_STATE.duration = 0;
+    xhrSourceFormatCounts.clear();
+    xhrArrayBufferCount = 0;
+  }
+
+  function classifyXhrSourceFormat(buffer: ArrayBuffer): string {
+    try {
+      const view = new Uint8Array(buffer);
+      if (view.byteLength < 4) return 'short';
+
+      // MPEG-TS: require repeated sync bytes when enough data is available.
+      if (view[0] === 0x47) {
+        if (view.byteLength < 189 || view[188] === 0x47) return 'mpegts';
+        if (view.byteLength >= 377 && view[376] === 0x47) return 'mpegts';
+      }
+
+      // ISO BMFF / fragmented MP4.
+      if (view.byteLength >= 8) {
+        const box = String.fromCharCode(view[4], view[5], view[6], view[7]).toLowerCase();
+        if (/^(ftyp|moov|moof|mdat|styp|sidx)$/.test(box)) return 'mp4';
+      }
+
+      // Matroska/WebM EBML.
+      if (view[0] === 0x1a && view[1] === 0x45 && view[2] === 0xdf && view[3] === 0xa3) return 'ebml';
+
+      // FLV.
+      if (view[0] === 0x46 && view[1] === 0x4c && view[2] === 0x56) return 'flv';
+
+      // ADTS AAC sync word.
+      if (view[0] === 0xff && (view[1] & 0xf6) === 0xf0) return 'adts';
+
+      // MP3 ID3.
+      if (view[0] === 0x49 && view[1] === 0x44 && view[2] === 0x33) return 'id3';
+
+      // Common image signatures, useful for excluding thumbnail traffic.
+      if (view[0] === 0xff && view[1] === 0xd8 && view[2] === 0xff) return 'image';
+      if (
+        view.byteLength >= 8 &&
+        view[0] === 0x89 && view[1] === 0x50 && view[2] === 0x4e && view[3] === 0x47 &&
+        view[4] === 0x0d && view[5] === 0x0a && view[6] === 0x1a && view[7] === 0x0a
+      ) return 'image';
+
+      return 'other';
+    } catch {
+      return 'unreadable';
+    }
+  }
+
+  function postXhrSourceFormatDiagnostic(generation = pageGeneration): void {
+    postToContentScript({
+      type: 'xhr-source-format-diagnostic',
+      xhrArrayBufferCount,
+      formats: Object.fromEntries(xhrSourceFormatCounts)
+    }, generation);
   }
 
   function notifyNavigation(): void {
@@ -244,6 +299,29 @@
     // Observe completion through a normal EventTarget listener instead of wrapping
     // each XHR instance or redefining onload/onreadystatechange/onloadend.
     const result = origXHROpen.apply(this, arguments as any);
+
+    try {
+      let classifiedResponse: ArrayBuffer | undefined;
+      const classifyResponse = () => {
+        if (generation !== pageGeneration) return;
+        try {
+          const response = this.response;
+          if (!(response instanceof ArrayBuffer) || response === classifiedResponse) return;
+          classifiedResponse = response;
+          xhrArrayBufferCount++;
+          const format = classifyXhrSourceFormat(response);
+          xhrSourceFormatCounts.set(format, (xhrSourceFormatCounts.get(format) || 0) + 1);
+          if (xhrArrayBufferCount === 1 || xhrArrayBufferCount % 10 === 0) {
+            postXhrSourceFormatDiagnostic(generation);
+          }
+        } catch {}
+      };
+
+      this.addEventListener('readystatechange', () => {
+        if (this.readyState === 4) classifyResponse();
+      }, true);
+      this.addEventListener('load', classifyResponse, true);
+    } catch {}
 
     if (looksLikeSegment(originalUrl) && generation === pageGeneration && MSE_STATE.segmentUrls.length < 500) {
       MSE_STATE.segmentUrls.push(originalUrl);
