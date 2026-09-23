@@ -61,7 +61,7 @@ Details and observations are in EXPERIMENTS.md.
 
 1. Native host installation works after the separate setup executable is installed. Installing only the extension produced "Specified native messaging host not found"; after the setup executable ran, that error disappeared.
 2. MAIN-world instrumentation can break playback on at least one tested site. With the stock mse-inject.js content script enabled, the site's video did not play. Removing that MAIN-world content-script entry restored playback. A compatibility patch on `fix/minimize-xhr-hook` removes XMLHttpRequest constructor replacement and per-instance event-property redefinition. User manual validation confirmed that the previously broken player now plays normally with the MSE injector enabled.
-3. Removing the MSE injector is not a viable final fix. After playback was restored, diagnostics showed the 14 popup entries were: 12 extensionless HTTPS `direct` entries from top-frame mutation-observed `<source>` descendants, 1 `blob:` direct entry from subframe `loadedmetadata`, and 1 HTTPS HLS entry detected from response Content-Type. Closed diagnostic PRs #4 and #5 were not merged. Branch `fix/filter-dom-source-noise` now gates child `<source>` observations through explicit media-URL recognition and rejects non-HTTP(S) generic DOM direct URLs; real-site validation is pending.
+3. Removing the MSE injector is not a viable final fix. After playback was restored, diagnostics showed the 14 popup entries were: 12 extensionless HTTPS `direct` entries from top-frame mutation-observed `<source>` descendants, 1 `blob:` direct entry from subframe `loadedmetadata`, and 1 HTTPS HLS entry detected from response Content-Type. Closed diagnostic PRs #4 and #5 were not merged. Branch `fix/filter-dom-source-noise` gates child `<source>` observations through explicit media-URL recognition and rejects non-HTTP(S) generic DOM direct URLs. User manual validation confirmed the popup dropped from 14 entries to 1.
 4. A separate tested site returns "Download failed with HTTP 404" on direct download. The exact server-side cause is not yet proven.
 5. The code currently sends no saved request headers in the direct-download call. startDownload() passes URL, directory, and filename to downloads.download; the CoApp supports custom headers, but the extension does not currently provide them on that path. This is a plausible compatibility gap for referer/origin/auth-sensitive URLs, not yet a proven cause of the observed 404.
 6. MSE "All Segments" assembly needs validation. content.ts currently constructs FFmpeg arguments as multiple independent -i inputs followed by -c copy. It is not yet verified that this reconstructs common fragmented MP4 sequences correctly; treat this as a candidate defect until tested.
@@ -93,8 +93,8 @@ The strongest current compatibility hypothesis is that the previous XHR construc
 - The modified XHR hook was separately type-checked against DOM typings with TypeScript 5.8 and compiled successfully.
 - User manual browser validation passed for the primary acceptance criterion: normal playback with the MSE injector enabled.
 - The persistent 14-entry popup count was traced to DOM detection noise: 12 extensionless HTTPS `<source>` descendants, 1 blob currentSrc, and 1 HLS entry.
-- Branch `fix/filter-dom-source-noise` implements a narrow DOM-filtering correction; browser validation is pending.
-- Full-stream download behavior of the remaining HLS/MSE candidate still requires validation after the noise fix.
+- User manual validation confirmed the DOM source-noise fix reduced the popup from 14 entries to 1.
+- Downloading the remaining HLS candidate still fails with the generic FFmpeg "could not open stream" error, so HLS access/rewrite diagnostics are now the next focus.
 
 ## Open questions
 
