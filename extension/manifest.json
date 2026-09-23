@@ -11,6 +11,8 @@
     "nativeMessaging",
     "tabs",
     "activeTab",
+    "offscreen",
+    "tabCapture",
     "webRequest",
     "notifications"
   ],
@@ -22,14 +24,22 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["dist/content.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "dist/content.js"
+      ],
       "run_at": "document_start",
       "all_frames": true
     },
     {
-      "matches": ["<all_urls>"],
-      "js": ["dist/mse-inject.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "dist/mse-inject.js"
+      ],
       "run_at": "document_start",
       "all_frames": true,
       "world": "MAIN"
