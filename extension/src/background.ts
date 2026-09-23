@@ -876,15 +876,29 @@ async function prepareHlsArguments(tabId: number, args: string[], referer?: stri
   const manifestFiles: ManifestFile[] = [];
   for (let i = 0; i < prepared.length - 1; i += 1) {
     if (prepared[i] !== '-i' || !/^https?:\/\//i.test(prepared[i + 1])) continue;
+
     const originalInput = prepared[i + 1];
     const rewrittenInput = await rewriteHlsInput(tabId, originalInput, referer, manifestFiles);
+    const usesLocalManifest = rewrittenInput !== originalInput;
     prepared[i + 1] = rewrittenInput;
-    if (rewrittenInput !== originalInput) {
-      prepared.splice(i, 0,
-        '-protocol_whitelist', 'file,http,https,tcp,tls,crypto,data',
-        '-extension_picky', '0'
-      );
-    }
+
+    // FFmpeg tightened HLS segment-extension checks in newer releases. Some valid
+    // streams use extensionless segment URLs, so disable extension matching only
+    // for HLS inputs. Keep the protocol whitelist narrow so doing so cannot expand
+    // the input to arbitrary/local protocols. Rewritten manifests need file: only
+    // because the CoApp materializes them as temporary local files.
+    const protocolWhitelist = usesLocalManifest
+      ? 'file,http,https,tcp,tls,crypto,data'
+      : 'http,https,tcp,tls,crypto,data';
+
+    prepared.splice(i, 0,
+      '-protocol_whitelist', protocolWhitelist,
+      '-extension_picky', '0'
+    );
+
+    // Skip over the options just inserted. The loop will continue after this input
+    // and can apply the same HLS-specific policy to additional HTTP(S) inputs.
+    i += 4;
   }
   return { args: prepared, manifestFiles };
 }
