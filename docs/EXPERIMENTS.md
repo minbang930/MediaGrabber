@@ -94,6 +94,33 @@ Verification performed by the agent:
 
 Result: user manual validation confirmed that the previously broken player now plays normally with the injector enabled. The popup still shows roughly 14 media entries. Conclusion: minimizing XHR interception fixed the observed playback regression, while fragment grouping remains a separate issue to investigate next.
 
+## 2026-09-23 — Suppress MSE-owned raw fragment entries
+
+Purpose: determine whether the roughly 14 popup entries are duplicate raw network detections of fragment URLs already used by MSE.
+
+Repository observation:
+
+- background webRequest detection treats HTTP(S) URLs ending in .mp4 or .webm as standalone media candidates;
+- the MAIN-world MSE hook separately observes segment URLs;
+- before this change, there was no explicit ownership link that told background that a raw MP4/WebM URL was an MSE fragment.
+
+Change on branch `fix/group-mse-fragments`:
+
+- content.ts sends a lightweight `MSE_SEGMENT_URL` message only after an actual MSE SourceBuffer has been observed;
+- segment URLs seen before SourceBuffer creation are retained and reported once the SourceBuffer appears;
+- background.ts stores MSE-owned segment URLs per tab;
+- matching raw `mp4`, `webm`, or `direct` entries are removed if already present and ignored if detected later;
+- tab reset clears the ownership set.
+
+This deliberately avoids broad filename-based suppression: a URL is hidden only when the MSE instrumentation on that page claims it as a segment.
+
+Verification performed by the agent:
+
+- full clone/build attempt remained blocked because the execution environment could not resolve github.com;
+- the added grouping helper logic passed a standalone TypeScript 5.8 strict check.
+
+Status: implementation complete on the branch, real-site popup-count validation pending.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
