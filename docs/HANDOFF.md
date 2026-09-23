@@ -16,9 +16,9 @@ Last updated: 2026-09-24
 
 PR #22 remains the validated transformed-XHR MSE capture baseline: one reload, clear SourceBuffer append capture, native ordered spooling, FFmpeg muxing, up to 8× chronological playback acceleration, cancellation/rate restoration, DRM guards, and cleanup.
 
-The current UX problem is Windows occlusion/backgrounding. PR #25 detached-window capture stalled when fully covered. PR #26 real-video PiP kept capture progressing under other tabs/apps. PR #27 synthetic helper PiP also kept capture progressing, but Chrome still displayed a normal visible PiP window, so it did not satisfy the desired "keep running without a visible PiP" UX.
+The current UX problem is Windows occlusion/backgrounding. PR #25 detached-window capture stalled when fully covered. PR #26 real-video PiP kept capture progressing under other tabs/apps. PR #27 (closed without merge) synthetic helper PiP also kept capture progressing, but Chrome still displayed a normal visible PiP window, so it did not satisfy the desired "keep running without a visible PiP" UX.
 
-Draft branch `exp/mse-tab-capture-keepalive` is the next experiment. It starts a video-only Chrome tab capture before the MSE reload and consumes it in a hidden offscreen extension document. Chromium has an explicit Windows `CapturesWhenOccluded` WebContents-capture browser test, making this a targeted experiment rather than a generic visibility spoof. The captured pixels are not used; the existing SourceBuffer/CoApp pipeline remains authoritative.
+Draft PR #28 (`exp/mse-tab-capture-keepalive`) is the next experiment. It starts a video-only Chrome tab capture before the MSE reload and consumes it in a hidden offscreen extension document. Chromium has an explicit Windows `CapturesWhenOccluded` WebContents-capture browser test, making this a targeted experiment rather than a generic visibility spoof. The captured pixels are not used; the existing SourceBuffer/CoApp pipeline remains authoritative.
 
 The separate direct-download HTTP 404 remains unresolved and follows this focused MSE UX experiment.
 
