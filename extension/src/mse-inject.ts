@@ -19,9 +19,14 @@
 
   let pageGeneration = 0;
   const mediaSourceGenerations = new WeakMap<MediaSource, number>();
+  let mediaSourceBlobUrls = new WeakMap<MediaSource, string>();
+  let blobUrlMediaSources = new Map<string, MediaSource>();
   let sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
   let sourceBufferMimes = new WeakMap<SourceBuffer, string>();
+  let sourceBufferMediaSources = new WeakMap<SourceBuffer, MediaSource>();
   let sourceBufferInitScanned = new WeakSet<SourceBuffer>();
+  let capturedMediaSources = new WeakSet<MediaSource>();
+  let capturedBlobUrls = new Set<string>();
   let captureTrackIds = new WeakMap<SourceBuffer, number>();
   const captureFragmentIndexes = new Map<number, number>();
   const CAPTURE_CHUNK_BYTES = 192 * 1024;
@@ -50,9 +55,14 @@
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
     MSE_STATE.duration = 0;
+    mediaSourceBlobUrls = new WeakMap<MediaSource, string>();
+    blobUrlMediaSources = new Map<string, MediaSource>();
     sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
     sourceBufferMimes = new WeakMap<SourceBuffer, string>();
+    sourceBufferMediaSources = new WeakMap<SourceBuffer, MediaSource>();
     sourceBufferInitScanned = new WeakSet<SourceBuffer>();
+    capturedMediaSources = new WeakSet<MediaSource>();
+    capturedBlobUrls = new Set<string>();
     captureTrackIds = new WeakMap<SourceBuffer, number>();
     captureFragmentIndexes.clear();
     nextCaptureTrackId = 1;
@@ -124,6 +134,13 @@
       id = nextCaptureTrackId++;
       captureTrackIds.set(sourceBuffer, id);
       captureFragmentIndexes.set(id, 0);
+
+      const mediaSource = sourceBufferMediaSources.get(sourceBuffer);
+      if (mediaSource) {
+        capturedMediaSources.add(mediaSource);
+        const blobUrl = mediaSourceBlobUrls.get(mediaSource);
+        if (blobUrl) capturedBlobUrls.add(blobUrl);
+      }
     }
     return { id, mime };
   }
@@ -177,6 +194,8 @@
 
       activeCaptureSession = sessionId;
       captureFinished = false;
+      capturedMediaSources = new WeakSet<MediaSource>();
+      capturedBlobUrls = new Set<string>();
       captureTrackIds = new WeakMap<SourceBuffer, number>();
       captureFragmentIndexes.clear();
       nextCaptureTrackId = 1;
@@ -299,10 +318,17 @@
     if (obj instanceof MediaSource) {
       const generation = pageGeneration;
       mediaSourceGenerations.set(obj, generation);
+      mediaSourceBlobUrls.set(obj, url);
+      blobUrlMediaSources.set(url, obj);
       MSE_STATE.blobUrl = url;
       try {
         obj.addEventListener('sourceended', () => {
-          if (generation === pageGeneration) finishCapture();
+          if (
+            generation === pageGeneration &&
+            capturedMediaSources.has(obj)
+          ) {
+            finishCapture();
+          }
         }, { once: true });
       } catch {}
       postToContentScript({ type: 'mse-detected', blobUrl: url });
@@ -326,6 +352,7 @@
     const sourceBuffer = origAddSourceBuffer.call(this, mimeType);
     sourceBufferGenerations.set(sourceBuffer, generation);
     sourceBufferMimes.set(sourceBuffer, mimeType);
+    sourceBufferMediaSources.set(sourceBuffer, this);
     return sourceBuffer;
   };
 
@@ -447,11 +474,16 @@
   };
 
   document.addEventListener('ended', (event) => {
-    if (event.target instanceof HTMLMediaElement) {
-      const current = event.target.currentSrc || event.target.src;
-      if (MSE_STATE.blobUrl && current === MSE_STATE.blobUrl) {
-        finishCapture();
-      }
+    if (!(event.target instanceof HTMLMediaElement)) return;
+    const current = event.target.currentSrc || event.target.src;
+    if (!current) return;
+
+    const mediaSource = blobUrlMediaSources.get(current);
+    if (
+      capturedBlobUrls.has(current) ||
+      (mediaSource && capturedMediaSources.has(mediaSource))
+    ) {
+      finishCapture();
     }
   }, true);
 
