@@ -176,7 +176,16 @@ const activeDownloads = new Map<string, {
   filename: string;
   tabId?: number;
   captureSessionId?: string;
-  lastProgress?: { percent: number; speed?: string; bytesReceived?: number; totalBytes?: number; eta?: number };
+  lastProgress?: {
+    percent: number;
+    speed?: string;
+    bytesReceived?: number;
+    totalBytes?: number;
+    eta?: number;
+    capture?: boolean;
+    phase?: string;
+    fragments?: number;
+  };
 }>();
 
 interface MseCaptureSession {
@@ -188,6 +197,7 @@ interface MseCaptureSession {
   activeFrameId?: number;
   outputPath: string;
   finalizing: boolean;
+  firstChunkSeen: boolean;
 }
 
 const mseCaptureByTab = new Map<number, MseCaptureSession>();
@@ -1029,7 +1039,8 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       sourceFrameId: video.sourceFrameId,
       sourceFrameUrl: video.sourceFrameUrl,
       outputPath,
-      finalizing: false
+      finalizing: false,
+      firstChunkSeen: false
     };
     mseCaptureByTab.set(tabId, session);
 
@@ -1040,7 +1051,14 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       filename: outFilename,
       tabId,
       captureSessionId: sessionId,
-      lastProgress: { percent: 0, bytesReceived: 0, totalBytes: 0 }
+      lastProgress: {
+        percent: 0,
+        bytesReceived: 0,
+        totalBytes: 0,
+        capture: true,
+        phase: 'reload',
+        fragments: 0
+      }
     });
 
     notify(
@@ -1216,6 +1234,9 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
     case 'MSE_CAPTURE_READY':
       return handleMseCaptureReady(sender);
 
+    case 'MSE_CAPTURE_STARTED':
+      return handleMseCaptureStarted(sender, message);
+
     case 'MSE_CAPTURE_CHUNK':
       return handleMseCaptureChunk(sender, message);
 
@@ -1267,6 +1288,36 @@ function mseCaptureSenderMatches(
   return frameId === 0;
 }
 
+function updateMseCapturePhase(
+  session: MseCaptureSession,
+  phase: string,
+  extra: Partial<{
+    bytesReceived: number;
+    fragments: number;
+  }> = {}
+): void {
+  const dl = activeDownloads.get(session.downloadKey);
+  const previous = dl?.lastProgress;
+  const progress = {
+    percent: 0,
+    bytesReceived: extra.bytesReceived ?? previous?.bytesReceived ?? 0,
+    totalBytes: 0,
+    fragments: extra.fragments ?? previous?.fragments ?? 0,
+    capture: true,
+    phase
+  };
+
+  if (dl) dl.lastProgress = progress;
+
+  forEachPopupForTab(session.tabId, (port) => {
+    port.postMessage({
+      type: 'DOWNLOAD_PROGRESS',
+      downloadId: session.downloadKey,
+      progress
+    });
+  });
+}
+
 function handleMseCaptureReady(sender: chrome.runtime.MessageSender): any {
   const tabId = sender.tab?.id;
   if (tabId === undefined) return { active: false };
@@ -1276,7 +1327,24 @@ function handleMseCaptureReady(sender: chrome.runtime.MessageSender): any {
   if (!mseCaptureSenderMatches(session, sender, true)) return { active: false };
 
   session.activeFrameId = sender.frameId ?? 0;
+  updateMseCapturePhase(session, 'frame-ready');
   return { active: true, sessionId: session.sessionId };
+}
+
+function handleMseCaptureStarted(sender: chrome.runtime.MessageSender, message: any): any {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    session.finalizing ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  updateMseCapturePhase(session, 'hook-armed');
+  return { success: true };
 }
 
 async function handleMseCaptureChunk(sender: chrome.runtime.MessageSender, message: any): Promise<any> {
@@ -1291,7 +1359,7 @@ async function handleMseCaptureChunk(sender: chrome.runtime.MessageSender, messa
     return { success: false, stale: true };
   }
 
-  return nativeClient.mseCaptureAppend(
+  const result = await nativeClient.mseCaptureAppend(
     session.sessionId,
     Number(message.trackId),
     String(message.mime || ''),
@@ -1300,6 +1368,13 @@ async function handleMseCaptureChunk(sender: chrome.runtime.MessageSender, messa
     Number(message.chunkCount),
     String(message.base64 || '')
   );
+
+  if (!session.firstChunkSeen) {
+    session.firstChunkSeen = true;
+    updateMseCapturePhase(session, 'first-fragment');
+  }
+
+  return result;
 }
 
 function handleMseCaptureProgress(sender: chrome.runtime.MessageSender, message: any): any {
@@ -1315,24 +1390,7 @@ function handleMseCaptureProgress(sender: chrome.runtime.MessageSender, message:
 
   const bytesReceived = Math.max(0, Number(message.bytes) || 0);
   const fragments = Math.max(0, Number(message.fragments) || 0);
-  const dl = activeDownloads.get(session.downloadKey);
-  if (dl) {
-    dl.lastProgress = { percent: 0, bytesReceived, totalBytes: 0 };
-  }
-  forEachPopupForTab(session.tabId, (port) => {
-    port.postMessage({
-      type: 'DOWNLOAD_PROGRESS',
-      downloadId: session.downloadKey,
-      progress: {
-        percent: 0,
-        bytesReceived,
-        totalBytes: 0,
-        fragments,
-        capture: true,
-        phase: 'capture'
-      }
-    });
-  });
+  updateMseCapturePhase(session, 'capture', { bytesReceived, fragments });
   return { success: true };
 }
 
@@ -1407,13 +1465,7 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
   }
 
   try {
-    forEachPopupForTab(session.tabId, (port) => {
-      port.postMessage({
-        type: 'DOWNLOAD_PROGRESS',
-        downloadId: session.downloadKey,
-        progress: { percent: 0, capture: true, phase: 'finalizing' }
-      });
-    });
+    updateMseCapturePhase(session, 'finalizing');
 
     const captured = await nativeClient.mseCaptureFinish(session.sessionId);
     const args = buildMseMuxArgs(captured.tracks, session.outputPath);
