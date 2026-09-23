@@ -57,7 +57,7 @@ Last reviewed: 2026-09-24
 - There is still no lint script.
 - The tag-triggered Windows release workflow remains separate.
 - npm run dev:extension is currently broken because extension/package.json has no watch script.
-- PR #22 CI passed on Windows/Node 22: dependency install, full extension/CoApp build, deterministic CoApp tests, and extension package smoke check all succeeded. Post-merge `main` CI is checked separately in HANDOFF.
+- PR #22 CI and the post-merge `main` CI both passed on Windows/Node 22: dependency install, full extension/CoApp build, deterministic CoApp tests, and extension package smoke check succeeded.
 
 ## Known compatibility findings
 
