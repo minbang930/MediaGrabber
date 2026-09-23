@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/filter-image-hls`: image-only HLS should disappear while the real MSE candidate remains visible and playback stays normal.
-- Test the surfaced MSE candidate for full-video download.
-- If MSE download is partial, replace the current multiple-independent-input assembly with an ordered reconstruction/mux strategy based on the confirmed fragment format.
+- Measure XHR completion-to-append timing and ambiguity for both fMP4 SourceBuffers.
+- If timing is consistently close and uniquely identifies one XHR, replace filename heuristics with a bounded nearest-XHR association that preserves player behavior.
+- After reliable per-buffer segment acquisition exists, implement ordered fMP4 reconstruction/muxing instead of multiple independent FFmpeg inputs.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
