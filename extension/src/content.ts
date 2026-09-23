@@ -198,7 +198,9 @@ class MediaDetector {
             const sources = node.querySelectorAll('source[src]');
             sources.forEach(source => {
               const sourceSrc = source.getAttribute('src');
-              if (sourceSrc) this.handleMediaUrl(sourceSrc);
+              if (sourceSrc && this.isMediaUrl(sourceSrc)) {
+                this.handleMediaUrl(sourceSrc);
+              }
             });
           }
         });
@@ -240,7 +242,9 @@ class MediaDetector {
     // Check for media source elements
     document.querySelectorAll('source[src]').forEach(source => {
       const src = source.getAttribute('src');
-      if (src) this.handleMediaUrl(src);
+      if (src && this.isMediaUrl(src)) {
+        this.handleMediaUrl(src);
+      }
     });
 
     // Check for iframe elements that might contain media
@@ -268,7 +272,9 @@ class MediaDetector {
     // Also check for source elements inside
     el.querySelectorAll('source[src]').forEach(source => {
       const sourceSrc = source.getAttribute('src');
-      if (sourceSrc) this.handleMediaUrl(sourceSrc);
+      if (sourceSrc && this.isMediaUrl(sourceSrc)) {
+        this.handleMediaUrl(sourceSrc);
+      }
     });
 
     // Listen for source changes
@@ -328,17 +334,26 @@ class MediaDetector {
    * Handle a detected media URL
    */
   private handleMediaUrl(url: string): void {
-    if (this.mediaUrls.has(url)) return;
-    this.mediaUrls.add(url);
+    let normalizedUrl: string;
+    try {
+      const parsed = new URL(url, window.location.href);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+      normalizedUrl = parsed.href;
+    } catch {
+      return;
+    }
 
-    console.log('[MediaGrabber] Media URL detected:', url);
+    if (this.mediaUrls.has(normalizedUrl)) return;
+    this.mediaUrls.add(normalizedUrl);
+
+    console.log('[MediaGrabber] Media URL detected:', normalizedUrl);
 
     // Determine media type
-    const type = this.getMediaType(url);
+    const type = this.getMediaType(normalizedUrl);
 
     const media: DetectedMedia = {
       type,
-      url,
+      url: normalizedUrl,
       pageUrl: window.location.href,
       generation: this.pageGeneration
     };

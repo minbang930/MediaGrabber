@@ -1,6 +1,6 @@
 # Handoff
 
-Last updated: 2026-09-23
+Last updated: 2026-09-24
 
 ## Just completed
 
@@ -14,15 +14,15 @@ Last updated: 2026-09-23
 
 ## Current focus
 
-The immediate engineering problem is the tested site where stock mse-inject.js prevents video playback. PR #3 (`fix/minimize-xhr-hook`) removes the invasive XMLHttpRequest constructor/event-property wrapping while keeping MSE observation. User manual validation confirmed normal playback on the previously broken site. Removing the injector entirely remains diagnostic only because that exposes many fragment-like entries and partial downloads.
+PR #3 merged and user validation confirmed normal playback on the previously broken site. Follow-up diagnostics traced the 14 popup entries to 12 top-frame extensionless HTTPS `<source>` descendants, 1 subframe blob currentSrc, and 1 HLS response. Diagnostic PRs #4 and #5 were closed without merge. Draft PR #6 (`fix/filter-dom-source-noise`) applies the narrow DOM filtering correction. User manual validation confirmed the popup dropped from 14 entries to 1.
 
 A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Merge PR #3 after final status review; its playback acceptance criterion passed.
-2. Inspect why the popup still exposes roughly 14 media entries on the tested site.
-3. Validate or rework fragment grouping/MSE reconstruction so a full stream is represented and downloaded rather than individual segments.
+1. Merge PR #6 after final status review; its popup-count acceptance criterion passed.
+2. Diagnose the remaining HLS candidate's FFmpeg failure without exposing signed URLs or request credentials.
+3. Distinguish manifest-open failure, segment-open failure, and missing relay rewrite before changing download logic.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 

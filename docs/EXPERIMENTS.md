@@ -94,6 +94,34 @@ Verification performed by the agent:
 
 Result: user manual validation confirmed that the previously broken player now plays normally with the injector enabled. The popup still shows roughly 14 media entries. Conclusion: minimizing XHR interception fixed the observed playback regression, while fragment grouping remains a separate issue to investigate next.
 
+## 2026-09-24 — DOM provenance identified the 14-entry source
+
+Purpose: identify exactly which detection path created the persistent 14 popup entries after playback compatibility was fixed.
+
+Diagnostic PR #5 added source-only metadata without exposing URLs or request credentials.
+
+Observed result:
+
+- `direct/content:dom/https/mutation:source/top × 12`;
+- `direct/content:dom/blob/media:loadedmetadata/subframe × 1`;
+- `hls/webRequest:content-type/https × 1`.
+
+Repository interpretation:
+
+- the 12 extensionless HTTPS entries come from descendant `<source src>` nodes discovered by the top-frame MutationObserver;
+- that descendant-source path previously called `handleMediaUrl()` without the `isMediaUrl()` guard, so extensionless alternatives were classified as generic `direct` entries;
+- the blob entry came from media `loadedmetadata/currentSrc`; it is not an HTTP(S) URL that the native direct downloader can use;
+- one HLS candidate is independently detected from response Content-Type.
+
+Follow-up fix on `fix/filter-dom-source-noise`:
+
+- require descendant/scanned child `<source>` URLs to pass explicit media-URL recognition before pre-registering them;
+- keep selected media-element `currentSrc` observation so an extensionless HTTP(S) source can still be detected once the browser actually selects it;
+- normalize DOM media URLs to absolute HTTP(S) URLs;
+- reject blob/data/other non-HTTP(S) URLs from generic direct registration.
+
+Result: user manual validation confirmed the popup dropped from 14 entries to 1. The remaining entry is the HLS candidate previously identified by response Content-Type. Downloading that entry still fails in FFmpeg with the generic "could not open stream" error. Conclusion: the DOM noise fix is successful; HLS download failure is a separate issue.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
