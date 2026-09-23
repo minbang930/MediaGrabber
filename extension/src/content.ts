@@ -19,6 +19,21 @@ class MediaDetector {
   private metadataTimer: number | undefined;
   private pageUrl = window.location.href;
   private pageGeneration = 0;
+  private mseDrmBoundary: {
+    encryptedEventCount: number;
+    initDataTypes: Record<string, number>;
+    buffers: Array<{
+      id: number;
+      mime: string;
+      initScanned: boolean;
+      drmMarkers: string[];
+      codecMarkers: string[];
+    }>;
+  } = {
+    encryptedEventCount: 0,
+    initDataTypes: {},
+    buffers: []
+  };
   private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
     totalBytes: 0,
     segmentUrls: []
@@ -52,6 +67,7 @@ class MediaDetector {
     this.detectedVideos = [];
     this.lastMetadataKey = '';
     this.mseState = { totalBytes: 0, segmentUrls: [] };
+    this.mseDrmBoundary = { encryptedEventCount: 0, initDataTypes: {}, buffers: [] };
     this.sendNavigation(pageUrl, this.pageGeneration);
     this.scheduleMetadataSend();
   }
@@ -104,6 +120,17 @@ class MediaDetector {
           }
           break;
 
+        case 'drm-boundary-diagnostic':
+          this.mseDrmBoundary = {
+            encryptedEventCount: Number(msg.encryptedEventCount) || 0,
+            initDataTypes: msg.encryptedInitDataTypes && typeof msg.encryptedInitDataTypes === 'object'
+              ? msg.encryptedInitDataTypes
+              : {},
+            buffers: Array.isArray(msg.buffers) ? msg.buffers : []
+          };
+          this.sendMSEToBackground();
+          break;
+
         case 'duration':
           this.mseState.duration = msg.duration;
           this.sendMSEToBackground();
@@ -140,11 +167,41 @@ class MediaDetector {
     const codec = this.mseState.codecs || '';
     const isAudioOnly = this.mseState.mimeType.startsWith('audio/');
 
+    const initDataTypes = Object.entries(this.mseDrmBoundary.initDataTypes || {})
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([name, count]) => `${name}:${count}`)
+      .join(',');
+
+    const drmBuffers = this.mseDrmBoundary.buffers
+      .map((buffer) => {
+        const drm = Array.isArray(buffer.drmMarkers) && buffer.drmMarkers.length > 0
+          ? buffer.drmMarkers.join(',')
+          : 'none';
+        const codecs = Array.isArray(buffer.codecMarkers) && buffer.codecMarkers.length > 0
+          ? buffer.codecMarkers.join(',')
+          : 'none';
+        return [
+          `B${buffer.id}`,
+          buffer.mime,
+          `init=${buffer.initScanned ? 1 : 0}`,
+          `drm=${drm}`,
+          `codec=${codecs}`
+        ].join(' ');
+      })
+      .join(' | ');
+
+    const baseLabel = isAudioOnly ? 'Audio' : (codec ? codec.split(',')[0] : 'MSE Stream');
+    const diagnostic = [
+      `eme=${this.mseDrmBoundary.encryptedEventCount}`,
+      `initData=${initDataTypes || 'none'}`,
+      drmBuffers
+    ].filter(Boolean).join(' ');
+
     const qualities: VideoQuality[] = [{
       height: 0,
       url,
       bitrate: 0,
-      label: isAudioOnly ? 'Audio' : (codec ? codec.split(',')[0] : 'MSE Stream'),
+      label: diagnostic ? `${baseLabel} [${diagnostic}]` : baseLabel,
       kind: isAudioOnly ? 'audio' : 'video'
     }];
 
