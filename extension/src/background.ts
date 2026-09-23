@@ -827,6 +827,71 @@ function formatFfmpegError(exitCode: number | null, stderr: string): string {
   return `FFmpeg exit code ${exitCode}: ${details.slice(-1000)}`;
 }
 
+interface HlsDownloadDiagnostic {
+  playlist: 'master' | 'media' | 'fetch-error' | 'unknown';
+  variants: number;
+  segments: number;
+  relayCodec: boolean;
+  relayMappings: number;
+  referer: boolean;
+  rewritten: boolean;
+}
+
+function classifyFfmpegFailure(stderr: string): string {
+  if (/HTTP error 401|Server returned 401/i.test(stderr)) return 'http401';
+  if (/HTTP error 403|Server returned 403/i.test(stderr)) return 'http403';
+  if (/HTTP error 404|Server returned 404/i.test(stderr)) return 'http404';
+  if (/HTTP error 410|Server returned 410/i.test(stderr)) return 'http410';
+  if (/Invalid data found/i.test(stderr)) return 'invalid-data';
+  if (/Error opening input/i.test(stderr)) return 'open-input';
+  if (/Connection timed out|timed out/i.test(stderr)) return 'timeout';
+  if (/Connection refused/i.test(stderr)) return 'connection-refused';
+  if (/Protocol not found/i.test(stderr)) return 'protocol';
+  return 'other';
+}
+
+async function inspectHlsDownload(tabId: number, inputUrl: string, referer?: string): Promise<HlsDownloadDiagnostic> {
+  let relayCodec = false;
+  try {
+    relayCodec = relayCodecsByTab.get(tabId)?.has(new URL(inputUrl).origin) || false;
+  } catch {}
+
+  const base: HlsDownloadDiagnostic = {
+    playlist: 'unknown',
+    variants: 0,
+    segments: 0,
+    relayCodec,
+    relayMappings: relayMappingsByTab.get(tabId)?.size || 0,
+    referer: Boolean(referer),
+    rewritten: false
+  };
+
+  try {
+    const parsed = await M3U8ParserWrapper.fetchAndParse(inputUrl, referer);
+    return {
+      ...base,
+      playlist: parsed.type,
+      variants: parsed.variants.length,
+      segments: parsed.segments?.length || 0
+    };
+  } catch {
+    return { ...base, playlist: 'fetch-error' };
+  }
+}
+
+function formatHlsDiagnostic(diag: HlsDownloadDiagnostic, stderr: string): string {
+  return [
+    `playlist=${diag.playlist}`,
+    `variants=${diag.variants}`,
+    `segments=${diag.segments}`,
+    `relayCodec=${diag.relayCodec ? 'yes' : 'no'}`,
+    `relayMappings=${diag.relayMappings}`,
+    `referer=${diag.referer ? 'yes' : 'no'}`,
+    `rewrite=${diag.rewritten ? 'yes' : 'no'}`,
+    `ffmpeg=${classifyFfmpegFailure(stderr)}`
+  ].join(' ');
+}
+
 interface ManifestFile {
   placeholder: string;
   content: string;
@@ -917,9 +982,15 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
     const baseArgs = formatArgs && formatArgs.length > 0
       ? [...formatArgs, '-y', outputPath]
       : [...inputArgs, ...codecArg, '-y', outputPath];
+    const hlsDiagnostic = type === 'hls'
+      ? await inspectHlsDownload(tabId ?? -1, video.url, video.referer)
+      : undefined;
     const prepared = type === 'hls'
       ? await prepareHlsArguments(tabId ?? -1, baseArgs, video.referer)
       : { args: baseArgs, manifestFiles: [] };
+    if (hlsDiagnostic) {
+      hlsDiagnostic.rewritten = prepared.manifestFiles.length > 0;
+    }
 
     activeDownloads.set(downloadKey, {
       type: 'convert',
@@ -942,7 +1013,11 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       } else {
         notify('Download failed', outFilename);
         popupPorts.forEach(port => {
-          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error: formatFfmpegError(result.exitCode, result.stderr) });
+          const baseError = formatFfmpegError(result.exitCode, result.stderr);
+          const error = type === 'hls' && hlsDiagnostic
+            ? `${baseError}\nHLS diagnostic: ${formatHlsDiagnostic(hlsDiagnostic, result.stderr)}`
+            : baseError;
+          port.postMessage({ type: 'DOWNLOAD_ERROR', downloadId: downloadKey, error });
         });
       }
       activeDownloads.delete(downloadKey);
