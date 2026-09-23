@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 fixed the player regression. PR #6 merged as `2bfc0884d8380fd31f9ed97310da3de39f5f0b45` and reduced the popup from 14 entries to 1. Draft PR #8 removed the prior terminal `invalid-data` failure, but FFmpeg now reaches output creation with no detected stream. Branch `diag/hls-no-stream` classifies the manifest structure before deciding the next fix.
+PR #3 fixed the player regression. PR #6 merged as `2bfc0884d8380fd31f9ed97310da3de39f5f0b45` and reduced the popup from 14 entries to 1. Draft PR #8 removed the prior terminal `invalid-data` failure, but FFmpeg now reaches output creation with no detected stream. Draft PR #9 (`diag/hls-no-stream`) classifies the manifest structure before deciding the next fix.
 
 A separate direct-download test currently fails with HTTP 404.
 
