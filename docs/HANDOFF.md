@@ -16,7 +16,9 @@ Last updated: 2026-09-24
 
 PR #22 merged to `main` as `19206681b33e987a1f08ef65ffa087c6264eda4f`. The tested transformed-XHR MSE path now has an explicit clear-fMP4 capture workflow: one reload, post-transform SourceBuffer capture, native ordered per-track spooling, FFmpeg muxing, up to 8× chronological playback acceleration, cancellation/rate restoration, EME/CENC guards, deterministic fragment/session tests, and PR/main CI. User validation passed end-to-end, including output correctness and temporary-file cleanup.
 
-The active compatibility problem is now separate: a direct-download candidate on another tested site returns HTTP 404. The exact cause remains unproven. Current code does not pass saved request context on the direct-download path even though the CoApp downloader supports caller-provided headers; treat that as a hypothesis to test narrowly, not as the established root cause.
+The merged MSE workflow is functional, but one UX gap remains under experiment: on the tested player, switching the capture tab into the background can stop fragment production. Branch `exp/mse-detached-capture-window` moves the existing capture tab into its own active non-minimized browser window, reloads/plays there, then returns focus to the user's original window after the first fragment. It deliberately does not spoof Page Visibility. Real-site validation is pending.
+
+The separate direct-download candidate on another tested site still returns HTTP 404. Its exact cause remains unproven and stays next after this focused MSE UX experiment.
 
 ## Next actions
 
