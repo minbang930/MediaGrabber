@@ -462,6 +462,46 @@ Final result:
 - the temporary PR28 build-identification markers were removed before merge preparation;
 - PR #28 merged to `main` as `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
 
+## 2026-09-24 — Global MAIN-world hook breaks non-media browsing
+
+User observations with current `main`:
+
+- Cloudflare human-verification UI can remain in a loading state instead of presenting/finishing the expected challenge while MediaGrabber is enabled;
+- `databento.com` can fail to load with MediaGrabber enabled;
+- the same browsing succeeds with MediaGrabber disabled, and also in the user's incognito test where the extension is not active;
+- YouTube thumbnails can initially fail to appear and then recover after a delay.
+
+Repository fact:
+
+- current `main` statically injects `mse-inject.js` into `<all_urls>`, all frames, at `document_start`, in the page's MAIN world;
+- before any download request, that script replaces page-visible History, fetch, XHR, URL, MediaSource, and SourceBuffer APIs.
+
+Interpretation:
+
+- the extension is confirmed to cause the observed browsing regressions;
+- the exact individual monkey-patch responsible for each site is not yet isolated;
+- because the regressions affect unrelated non-media browsing, preserving a global MAIN-world hook is not an acceptable architecture even if one individual wrapper can be patched.
+
+Candidate fix on `fix/lazy-mse-main-hook`:
+
+- remove static MAIN-world injection from the manifest;
+- detect ordinary `blob:` media elements as MSE candidates from the isolated content script without changing page globals;
+- when the user explicitly starts an MSE download, dynamically register `mse-inject.js` only for the relevant player/page origin at `document_start`, then reload for capture;
+- unregister that temporary hook on success, cancellation, or error;
+- remove History, `window.fetch`, and `XMLHttpRequest.prototype.open` wrapping from the MSE hook because the validated append-capture path does not require them;
+- observe media HTTP redirects for relay mapping through `webRequest.onBeforeRedirect` instead of page-world XHR;
+- use the isolated-world Navigation API listener for same-document URL changes instead of replacing page-owned History methods.
+
+Manual acceptance required:
+
+- Cloudflare challenge UI works normally with the extension enabled;
+- `databento.com` loads normally;
+- YouTube thumbnails load normally without the previous delay;
+- the previously validated transformed-XHR MSE site still exposes an MSE candidate;
+- MSE Download still reloads, captures, accelerates, survives background/occlusion, completes correctly, and cleans up on Cancel.
+
+Status: implementation branch prepared; CI and manual browser validation pending.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
