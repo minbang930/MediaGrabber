@@ -14,15 +14,15 @@ Last updated: 2026-09-23
 
 ## Current focus
 
-The immediate engineering problem is the tested site where stock mse-inject.js prevents video playback. PR #3 (`fix/minimize-xhr-hook`) removes the invasive XMLHttpRequest constructor/event-property wrapping while keeping MSE observation. User manual validation confirmed normal playback on the previously broken site. Removing the injector entirely remains diagnostic only because that exposes many fragment-like entries and partial downloads.
+PR #3 merged as `f1b73b9181fb40add46e7f12c10a844972f9c9d9`, and user validation confirmed normal playback on the previously broken site. The popup still shows 14 media entries. PR #4's exact MSE-owned URL suppression produced no reduction and was closed without merge. Branch `diag/media-entry-provenance` adds source/type labels only so the next test can identify which pipeline creates the 14 entries.
 
 A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Merge PR #3 after final status review; its playback acceptance criterion passed.
-2. Inspect why the popup still exposes roughly 14 media entries on the tested site.
-3. Validate or rework fragment grouping/MSE reconstruction so a full stream is represented and downloaded rather than individual segments.
+1. Build/load `diag/media-entry-provenance` and play the same site for several seconds.
+2. Record only the popup source/type summary (for example `mp4/webRequest:url × 14`); no URL/query/header data is needed.
+3. Use that confirmed provenance to implement the next grouping/reconstruction change on a separate fix branch.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
