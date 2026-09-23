@@ -661,7 +661,9 @@ function updateProgressUI(progress: any): void {
       case 'hook-armed':
         updateStatus(
           progress.pipState === 'waiting-user'
-            ? 'Capture hook armed — press Play once to start capture and Picture-in-Picture.'
+            ? progress.pipDetail === 'helper'
+              ? 'Capture hook armed — press Play once to start capture and helper Picture-in-Picture.'
+              : 'Capture hook armed — press Play once to start capture and Picture-in-Picture.'
             : 'Capture hook armed — start playback from the beginning.',
           'info'
         );
@@ -678,7 +680,7 @@ function updateProgressUI(progress: any): void {
         const rateSuffix = effectiveRate > 1 ? ` · ${effectiveRate.toFixed(1)}×` : '';
         const targetSuffix = progress.targetMode ? ` · target=${progress.targetMode}` : '';
         const pipSuffix = progress.pipState === 'active' || progress.pipState === 'existing'
-          ? ' · PiP'
+          ? progress.pipDetail === 'helper' ? ' · Helper PiP' : ' · PiP'
           : progress.pipState === 'left'
             ? ' · PiP closed'
             : progress.pipState === 'unsupported'
@@ -761,7 +763,7 @@ function updateProgressUI(progress: any): void {
     const requested = progress.requestedRate.toFixed(1);
     const target = progress.targetMode ? ` · target=${progress.targetMode}` : '';
     const pip = progress.pipState === 'active' || progress.pipState === 'existing'
-      ? ' · PiP active'
+      ? progress.pipDetail === 'helper' ? ' · Helper PiP active' : ' · PiP active'
       : '';
     speedEl.textContent = progress.effectiveRate === progress.requestedRate
       ? `Playback: ${effective}×${target}${pip}`
