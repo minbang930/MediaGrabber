@@ -322,7 +322,10 @@ class MediaDetector {
   }
 
   private queueMseCaptureTerminal(message: any): void {
-    if (!this.mseCaptureTerminalMessage) {
+    if (
+      !this.mseCaptureTerminalMessage ||
+      message?.type === 'MSE_CAPTURE_ERROR'
+    ) {
       this.mseCaptureTerminalMessage = message;
     }
     this.flushMseCaptureTerminal();
