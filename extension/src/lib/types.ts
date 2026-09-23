@@ -46,6 +46,7 @@ export interface VideoInfo {
   thumbnail?: string;
   duration?: number;
   fileSize?: number;
+  detectionSource?: 'webRequest:url' | 'webRequest:content-type' | 'content:mse' | 'content:dom' | 'unknown';
 }
 
 export interface DownloadProgress {
