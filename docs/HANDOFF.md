@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 merged and user validation confirmed normal playback on the previously broken site. Follow-up diagnostics traced the 14 popup entries to 12 top-frame extensionless HTTPS `<source>` descendants, 1 subframe blob currentSrc, and 1 HLS response. Diagnostic PRs #4 and #5 were closed without merge. Draft PR #6 (`fix/filter-dom-source-noise`) applies the narrow DOM filtering correction. User manual validation confirmed the popup dropped from 14 entries to 1.
+PR #3 fixed the player regression. PR #6 merged as `2bfc0884d8380fd31f9ed97310da3de39f5f0b45` and reduced the popup from 14 entries to 1. The remaining HLS entry parses as a 1118-segment media playlist but FFmpeg returns `invalid-data`. Branch `fix/hls-extensionless-segments` now tests a protocol-scoped HLS extension-relaxation fix.
 
 A separate direct-download test currently fails with HTTP 404.
 
