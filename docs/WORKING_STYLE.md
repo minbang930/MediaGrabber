@@ -35,10 +35,12 @@ Do not commit secrets, browser credentials, authentication headers, cookies, or 
 
 Current repository baseline:
 
-- full build: npm run build;
-- extension package smoke check: npm run package:extension;
-- no automated test suite or linter is currently configured;
-- GitHub Actions currently runs a release build only on v* tags, not on every PR.
+- full build: `npm run build`;
+- deterministic CoApp tests: `npm run test:coapp` after build;
+- extension package smoke check: `npm run package:extension`;
+- PR/push CI: Windows + Node 22 runs `npm ci`, full build, CoApp tests, and extension package smoke check;
+- tag-triggered release CI remains separate;
+- no linter is currently configured.
 
 Browser/player compatibility requires manual integration testing. When an agent cannot perform a browser-site test directly, state that explicitly and give the user the shortest reproducible test procedure. Never report a manual site test as verified unless the user actually ran it and reported the result.
 
