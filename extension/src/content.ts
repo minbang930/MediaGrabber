@@ -19,6 +19,10 @@ class MediaDetector {
   private metadataTimer: number | undefined;
   private pageUrl = window.location.href;
   private pageGeneration = 0;
+  private mseXhrSourceFormat: { count: number; formats: Record<string, number> } = {
+    count: 0,
+    formats: {}
+  };
   private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
     totalBytes: 0,
     segmentUrls: []
@@ -52,6 +56,7 @@ class MediaDetector {
     this.detectedVideos = [];
     this.lastMetadataKey = '';
     this.mseState = { totalBytes: 0, segmentUrls: [] };
+    this.mseXhrSourceFormat = { count: 0, formats: {} };
     this.sendNavigation(pageUrl, this.pageGeneration);
     this.scheduleMetadataSend();
   }
@@ -104,6 +109,14 @@ class MediaDetector {
           }
           break;
 
+        case 'xhr-source-format-diagnostic':
+          this.mseXhrSourceFormat = {
+            count: Number(msg.xhrArrayBufferCount) || 0,
+            formats: msg.formats && typeof msg.formats === 'object' ? msg.formats : {}
+          };
+          this.sendMSEToBackground();
+          break;
+
         case 'duration':
           this.mseState.duration = msg.duration;
           this.sendMSEToBackground();
@@ -140,11 +153,21 @@ class MediaDetector {
     const codec = this.mseState.codecs || '';
     const isAudioOnly = this.mseState.mimeType.startsWith('audio/');
 
+    const sourceFormats = Object.entries(this.mseXhrSourceFormat.formats || {})
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([name, count]) => `${name}:${count}`)
+      .join(',');
+
+    const baseLabel = isAudioOnly ? 'Audio' : (codec ? codec.split(',')[0] : 'MSE Stream');
+    const diagnostic = this.mseXhrSourceFormat.count > 0
+      ? `xhrAB=${this.mseXhrSourceFormat.count} src=${sourceFormats || 'none'}`
+      : '';
+
     const qualities: VideoQuality[] = [{
       height: 0,
       url,
       bitrate: 0,
-      label: isAudioOnly ? 'Audio' : (codec ? codec.split(',')[0] : 'MSE Stream'),
+      label: diagnostic ? `${baseLabel} [${diagnostic}]` : baseLabel,
       kind: isAudioOnly ? 'audio' : 'video'
     }];
 
