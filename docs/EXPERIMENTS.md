@@ -415,7 +415,7 @@ Acceptance:
 - final output remains complete/playable;
 - Cancel restores playback rate and ends the tab-capture indicator/stream.
 
-Status: implementation pending CI and real-site validation.
+Status: implementation CI passed on Windows/Node 22 (full build, CoApp tests, extension package smoke check); real-site validation pending.
 
 ## Candidate reconstruction issue
 
