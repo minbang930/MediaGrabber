@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #15 surfaced the real MSE candidate while preserving playback. Diagnostics #16-#21 then showed that this player transforms opaque XHR data into separate clear audio/video fMP4 SourceBuffers, with no reliable URL replay path and no observed EME/CENC protection. Draft PR #22 (`fix/mse-append-capture`) implements an explicit user-triggered reload/capture/native-spool/mux workflow. It is not merged; full build and real-site validation are pending.
+PR #15 surfaced the real MSE candidate while preserving playback. Diagnostics #16-#21 then showed that this player transforms opaque XHR data into separate clear audio/video fMP4 SourceBuffers, with no reliable URL replay path and no observed EME/CENC protection. Draft PR #22 (`fix/mse-append-capture`) implements an explicit user-triggered reload/capture/native-spool/mux workflow. First real-site validation confirmed the one-time reload but did not finalize an output; it also exposed a cross-tab popup broadcast bug. Follow-up fixes for tab scoping, captured-MediaSource finalization, cross-world byte views, and capture progress are now on the PR and need a second manual validation.
 
 A separate direct-download test currently fails with HTTP 404.
 
