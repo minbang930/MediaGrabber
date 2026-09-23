@@ -52,13 +52,13 @@ It currently instruments:
 
 - history navigation;
 - window.fetch;
-- the XMLHttpRequest constructor/instances and XMLHttpRequest.prototype.open;
+- XMLHttpRequest.prototype.open, using a normal loadend event listener for relay observation;
 - URL.createObjectURL;
 - MediaSource and SourceBuffer APIs.
 
 It reports MSE state and original-to-relay URL mappings to content.ts using window.postMessage.
 
-This layer is currently the highest compatibility-risk component because it mutates page-global APIs. The project requirement is to retain observability while preserving native page semantics.
+This layer is currently the highest compatibility-risk component because it mutates page-global APIs. The current compatibility patch removes XMLHttpRequest constructor replacement and per-instance event-property redefinition, while retaining a minimal prototype.open observer. The project requirement is to retain observability while preserving native page semantics.
 
 ## Stream parsing and relay rewriting
 
