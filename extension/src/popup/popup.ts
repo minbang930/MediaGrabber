@@ -352,7 +352,7 @@ function selectMedia(video: VideoInfo, element: HTMLElement): void {
   // If no qualities from detection, use direct URL
   if (currentQualities.length === 0 && video.type !== 'ytdlp') {
     currentQualities = [{
-      label: 'Direct',
+      label: video.type === 'mse' ? 'Capture' : 'Direct',
       bandwidth: 0,
       bandwidthLabel: 'Unknown',
       url: video.url,
