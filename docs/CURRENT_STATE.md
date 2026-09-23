@@ -100,7 +100,10 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- After image-only HLS filtering, does the real MSE candidate become the sole visible media entry while playback stays normal?
-- Can the current MSE `All Segments` path reconstruct the full video, or does it need ordered fragment concatenation/muxing?
+- PR #15 validation passed: playback remains normal and the MSE candidate is visible.
+- Closed PRs #16-#19 established two fMP4 SourceBuffers fed by transformed XHR data: 30 raw XHR ArrayBuffers produce 30 audio + 30 video appends, with no safe filename/timing/object-identity URL mapping.
+- Closed PR #20 classified all 30 raw XHR ArrayBuffers as `other`, so the network response is not a recognized standard media container before player-side transformation.
+- Branch `diag/mse-drm-boundary` checks only CENC/EME indicators before any post-transform append capture is considered.
+- If DRM indicators are absent, can user-triggered post-transform fMP4 capture preserve playback and support ordered track reconstruction/muxing?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
