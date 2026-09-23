@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Complete request-context presence diagnosis for exact-matched browser HLS segment/key requests.
-- Keep PR #8 unmerged until we know whether FFmpeg is missing browser Cookie/Authorization/Range/Referer/Origin context.
-- If context differs, design the smallest credential-safe propagation model; if not, inspect decrypted segment probing/format without broadening browser credential handling.
+- Complete hashed equality comparison between browser Referer/Origin and MediaGrabber's FFmpeg values.
+- Keep PR #8 unmerged until the no-stream cause is understood.
+- If Referer scope differs, fix only that value source; if values match, move to decrypted segment format/probing diagnosis without broadening credential handling.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
