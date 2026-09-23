@@ -78,7 +78,7 @@ The CoApp uses Chrome native messaging framing:
 - UTF-8 JSON payload;
 - bidirectional RPC request/reply conventions.
 
-The CoApp entry point registers modules for direct downloads, file operations, FFmpeg conversion/probing, and yt-dlp.
+The CoApp entry point registers modules for direct downloads, file operations, FFmpeg conversion/probing, yt-dlp, and—on the append-capture branch—an MSE spool module. That module accepts bounded base64 chunks over JSON RPC, writes them immediately to temporary per-track files in fragment order, and exposes only temporary track paths back to the background for final FFmpeg muxing.
 
 This boundary is important because the extension has browser/page context while the CoApp has filesystem/process capabilities. Compatibility fixes should deliberately choose what context crosses this boundary rather than copying browser state wholesale.
 
