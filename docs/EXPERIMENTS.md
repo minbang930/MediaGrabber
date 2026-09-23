@@ -142,6 +142,22 @@ Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excl
 
 Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
+## 2026-09-24 — XHR buffers are transformed before MSE append
+
+Closed PR #19 result:
+
+- 30 XHR ArrayBuffer responses were observed;
+- audio SourceBuffer received 30 fMP4 appends;
+- video SourceBuffer received 30 fMP4 appends;
+- exact ArrayBuffer identity matches: 0 for both buffers;
+- backing-buffer identity matches: 0 for both buffers.
+
+Interpretation: the player does not pass XHR response buffers directly to MSE. One network response likely feeds browser-side processing that produces separate audio/video fMP4 fragments. Timing and object identity therefore cannot safely recover per-SourceBuffer URLs.
+
+Follow-up branch `diag/mse-xhr-source-format` examines only the first few bytes of each XHR ArrayBuffer long enough to classify the source container as MPEG-TS, MP4, EBML/WebM, FLV, ADTS, ID3, image, or other. The response object, URL, and media bytes are not retained.
+
+Purpose: if the raw XHR object is already a standard media segment, capture can move to response-signature-based URL selection. If it is `other`, the player is likely doing additional transformation before generating the fMP4 appends and the architecture must capture later in the pipeline.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
