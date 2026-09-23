@@ -148,6 +148,24 @@ Experiment on branch `fix/hls-extensionless-segments`:
 
 Status: implementation complete on the branch, real-site validation pending.
 
+## 2026-09-24 — HLS candidate-role diagnostic
+
+Result sequence on the remaining HLS entry:
+
+- PR #8 changed the terminal FFmpeg failure from `invalid-data` to zero output streams while playback remained normal.
+- PR #9 classified the playlist as HLS v6 media with 1118 nonstandard-extension segments and AES-128/identity encryption.
+- PRs #10-#12 showed browser segment requests succeed and their Referer/Origin context matches what MediaGrabber gives FFmpeg.
+- PR #13 showed FFmpeg probes the HLS playlist as `hls` (score 100) and the decrypted child segment as `image2` (score 50), with one stream observed.
+
+Interpretation: request context is no longer the leading cause. The `image2` child probe creates a stronger alternative hypothesis that the detected HLS is an image/thumbnail playlist rather than the main A/V stream.
+
+Follow-up branch `diag/hls-candidate-role` performs two non-sensitive checks without downloading:
+
+- classify HLS segment filename extensions into `image`, `media`, `subtitle`, `extensionless`, or `other`;
+- report only the count/type of media entries hidden by the duration-first popup filter.
+
+Status: awaiting one popup status line.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
