@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- PR #22 deterministic MSE tests and Windows/Node 22 CI are green; perform final diff/status review and merge.
-- Keep the validated 8× playback-rate acceleration as the preferred MSE capture UX; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
-- Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
+- Diagnose the separate direct-download HTTP 404 and determine whether URL freshness/provenance or a minimal non-sensitive request context is required.
+- If request context is proven necessary, design and validate the narrowest safe propagation path; do not copy cookies/auth or broad browser context by default.
+- Keep the validated 8× chronological playback-rate strategy for MSE capture; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
 
 ## Next
 
@@ -27,6 +27,7 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 - Fork created from upstream and verified aligned with upstream main at bootstrap.
 - Long-term repository-first agent/documentation workspace initialized.
 - Current manual compatibility observations captured in EXPERIMENTS.md.
+- PR #22 merged the validated transformed-XHR MSE append-capture/mux workflow, 8× chronological acceleration, cancellation cleanup, deterministic MSE fragment/session tests, and Windows/Node 22 PR/main CI.
 
 ## Deferred / not a goal
 
