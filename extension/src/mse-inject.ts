@@ -111,6 +111,9 @@
     const captured = videos.find((video) => isCapturedMediaElement(video));
     if (captured) return captured;
 
+    const playing = videos.filter((video) => !video.paused && !video.ended);
+    if (playing.length === 1) return playing[0];
+
     return videos.length === 1 ? videos[0] : undefined;
   }
 
