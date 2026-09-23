@@ -125,7 +125,7 @@ Diagnostic-only change:
 - do not expose query strings, cookies, headers, or authorization material;
 - do not change filtering, grouping, or download behavior.
 
-Observed popup summary: `direct/content:dom × 13, hls/webRequest:content-type × 1`. The 13 noisy entries therefore come from the DOM/content-script path, while one HLS entry comes from response Content-Type detection. Because `direct/content:dom` may still be either a non-HTTP browser URL or an extensionless HTTP(S) URL, the diagnostic now also shows URL scheme only. Status: awaiting one scheme-level summary.
+Observed popup summary: `direct/content:dom/https × 12, direct/content:dom/blob × 1, hls/webRequest:content-type/https × 1`. This confirms one non-downloadable blob DOM entry and twelve extensionless HTTPS DOM entries, plus one HLS entry found from response Content-Type. The diagnostic now adds only two more non-sensitive labels for DOM entries: which DOM property/path first reported the URL (`media:currentSrc`, `media:src`, `media:source`, `media:loadedmetadata`, scan/mutation variants) and whether the content script ran in the top frame or a subframe. Status: awaiting one final path/frame summary before implementing filtering/grouping.
 
 ## Candidate reconstruction issue
 
