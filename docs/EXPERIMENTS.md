@@ -94,6 +94,39 @@ Verification performed by the agent:
 
 Result: user manual validation confirmed that the previously broken player now plays normally with the injector enabled. The popup still shows roughly 14 media entries. Conclusion: minimizing XHR interception fixed the observed playback regression, while fragment grouping remains a separate issue to investigate next.
 
+## 2026-09-23 — Exact MSE-owned fragment suppression did not reduce popup count
+
+Purpose: test whether the roughly 14 popup entries were raw MP4/WebM/direct entries whose URLs exactly matched segment URLs seen by the MAIN-world MSE hook.
+
+Change tested in closed PR #4:
+
+- track MSE-owned segment URLs after an actual SourceBuffer exists;
+- remove matching raw entries and ignore later exact-URL matches.
+
+Observed result from user manual validation:
+
+- playback remained normal;
+- popup count remained 14;
+- no observable reduction in entries.
+
+Conclusion: the 14 entries are not explained by this exact-URL ownership model, or the requests producing those entries are not visible to the page-level fetch/XHR segment observer. PR #4 was closed without merge. Do not reapply this suppression as a confirmed fix.
+
+## 2026-09-23 — Media-entry provenance diagnostic
+
+Purpose: identify which detection pipeline is producing the 14 stored VideoInfo entries before attempting another grouping rule.
+
+Branch: `diag/media-entry-provenance`.
+
+Diagnostic-only change:
+
+- annotate entries as `webRequest:url`, `webRequest:content-type`, `content:mse`, or `content:dom`;
+- show a popup summary such as `mp4/webRequest:url × 14`;
+- show the same source next to each media type;
+- do not expose query strings, cookies, headers, or authorization material;
+- do not change filtering, grouping, or download behavior.
+
+Status: awaiting one manual popup summary from the same test site.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
