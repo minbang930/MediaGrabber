@@ -16,7 +16,7 @@ Last updated: 2026-09-24
 
 PR #22 merged to `main` as `19206681b33e987a1f08ef65ffa087c6264eda4f`. The tested transformed-XHR MSE path now has an explicit clear-fMP4 capture workflow: one reload, post-transform SourceBuffer capture, native ordered per-track spooling, FFmpeg muxing, up to 8× chronological playback acceleration, cancellation/rate restoration, EME/CENC guards, deterministic fragment/session tests, and PR/main CI. User validation passed end-to-end, including output correctness and temporary-file cleanup.
 
-The merged MSE workflow is functional, but background/occluded playback remains the current UX experiment. PR #25 (detached normal window) was closed without merge because capture stopped when another maximized window fully covered it, while partial visibility resumed progress. Branch `exp/mse-pip-capture` now tests standard video Picture-in-Picture triggered by the user's post-reload Play click; it does not spoof Page Visibility or override site PiP restrictions.
+The merged MSE workflow is functional, but background/occluded playback remains the current UX experiment. PR #25 (detached normal window) was closed without merge because capture stopped when another maximized window fully covered it, while partial visibility resumed progress. Draft PR #26 (`exp/mse-pip-capture`) now tests standard video Picture-in-Picture triggered by the user's post-reload Play click; it does not spoof Page Visibility or override site PiP restrictions.
 
 The separate direct-download candidate on another tested site still returns HTTP 404 and remains next after this focused MSE UX experiment.
 
