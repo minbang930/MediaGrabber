@@ -122,6 +122,31 @@ Follow-up fix on `fix/filter-dom-source-noise`:
 
 Result: user manual validation confirmed the popup dropped from 14 entries to 1. The remaining entry is the HLS candidate previously identified by response Content-Type. Downloading that entry still fails in FFmpeg with the generic "could not open stream" error. Conclusion: the DOM noise fix is successful; HLS download failure is a separate issue.
 
+## 2026-09-24 — Remaining HLS candidate fails in FFmpeg
+
+Observation after the DOM source-noise fix:
+
+- popup count dropped from 14 to 1;
+- attempting to download the remaining entry produced the existing FFmpeg "could not open stream" message.
+
+Repository fact: the extension had already parsed the HLS candidate successfully enough to expose it, while the failure occurs after the FFmpeg convert path starts. The generic user-facing error currently hides whether FFmpeg failed on the playlist request, a child segment, or an opaque relay/rewrite path.
+
+Diagnostic branch: `diag/hls-ffmpeg-open`.
+
+The diagnostic records only:
+
+- playlist type (`master`, `media`, or fetch error);
+- variant and segment counts;
+- whether a relay codec was learned for the selected input origin;
+- total learned relay-mapping count for the tab;
+- whether a referer is present;
+- whether HLS input rewriting produced a temporary manifest;
+- a coarse FFmpeg failure category such as HTTP 403/404, invalid data, open-input, timeout, or other.
+
+It does not display the media URL, path, query string, cookies, authorization values, or headers.
+
+Status: awaiting one manual failure message from the same site.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
