@@ -14,15 +14,15 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 merged and user validation confirmed normal playback on the previously broken site. Follow-up diagnostics traced the 14 popup entries to 12 top-frame extensionless HTTPS `<source>` descendants, 1 subframe blob currentSrc, and 1 HLS response. Diagnostic PRs #4 and #5 were closed without merge. Draft PR #6 (`fix/filter-dom-source-noise`) now applies the narrow DOM filtering correction.
+PR #3 merged and user validation confirmed normal playback on the previously broken site. Follow-up diagnostics traced the 14 popup entries to 12 top-frame extensionless HTTPS `<source>` descendants, 1 subframe blob currentSrc, and 1 HLS response. Diagnostic PRs #4 and #5 were closed without merge. Draft PR #6 (`fix/filter-dom-source-noise`) applies the narrow DOM filtering correction. User manual validation confirmed the popup dropped from 14 entries to 1.
 
 A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Build/load `fix/filter-dom-source-noise` and confirm playback remains normal.
-2. After several seconds of playback, record the popup media count. Expected: the 12 mutation-observed extensionless `<source>` entries and the blob direct entry are gone or substantially reduced.
-3. Test the remaining HLS/MSE candidate for full-video download; only then change reconstruction logic if needed.
+1. Merge PR #6 after final status review; its popup-count acceptance criterion passed.
+2. Diagnose the remaining HLS candidate's FFmpeg failure without exposing signed URLs or request credentials.
+3. Distinguish manifest-open failure, segment-open failure, and missing relay rewrite before changing download logic.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
