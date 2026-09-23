@@ -22,11 +22,11 @@ The separate direct-download candidate on another tested site still returns HTTP
 
 ## Next actions
 
-1. Build/load `exp/mse-pip-capture`; CoApp replacement is unnecessary.
-2. Start the tested MSE download and, after reload, press Play once. Confirm a standard Picture-in-Picture window opens and popup state reports `PiP active`.
-3. Switch to other tabs and optionally another maximized application while leaving PiP open. Confirm capture bytes/fragments continue and the final output is normal.
-4. Test Cancel once and confirm MediaGrabber-owned PiP closes, playback rate restores, and the player remains usable.
-5. If PiP opens but capture still stalls, record whether the PiP video itself keeps visibly advancing; this distinguishes media playback continuation from page-side MSE producer throttling.
+1. Build/load `exp/mse-helper-pip-capture`; CoApp replacement is unnecessary.
+2. Start the tested MSE download and, after reload, press Play once. Confirm the popup reports `Helper PiP active` and a small black/thin PiP surface appears.
+3. Switch to other tabs and optionally another maximized application. Confirm capture bytes/fragments continue and the final output is normal.
+4. Test Cancel once and confirm the helper PiP closes, playback rate restores, and the player remains usable.
+5. If helper PiP remains visible/active but capture stalls, helper PiP is insufficient and PR #26 real-video PiP remains the working baseline.
 6. Then return to the direct-download HTTP 404 investigation.
 
 ## Start here
