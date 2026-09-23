@@ -142,6 +142,26 @@ Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excl
 
 Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
+## 2026-09-24 — MSE timing correlation is ambiguous; test XHR ArrayBuffer identity
+
+Closed PR #18 result for both audio and video fMP4 SourceBuffers:
+
+- 30 appends each;
+- 28/30 appends had an XHR response end within 20 ms; all 30 were within 100 ms;
+- only 2/30 append events had exactly one XHR candidate in the 100 ms window;
+- 28/30 had multiple XHR candidates.
+
+Conclusion: nearest-XHR timing alone is too ambiguous to safely associate URLs to audio/video SourceBuffers.
+
+Follow-up branch `diag/mse-xhr-response-identity`:
+
+- observes completed XHR responses through normal capture-phase EventTarget listeners;
+- stores only a WeakSet marker for ArrayBuffer response objects;
+- checks whether the exact ArrayBuffer object, or the backing buffer of an ArrayBufferView, is passed to SourceBuffer.appendBuffer;
+- reports only identity-match counts plus the number of observed XHR ArrayBuffer responses.
+
+No URL, header value, signed token, or media payload is retained or displayed. If identity matches are high, a later fix can map the matched response object to its URL with bounded lifetime and per-SourceBuffer ownership instead of guessing by time.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
