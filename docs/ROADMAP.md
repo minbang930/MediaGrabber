@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/hls-extensionless-segments` on the remaining HLS candidate while preserving normal playback.
-- If the HLS download succeeds, finalize the protocol-scoped extension-relaxation fix and add regression coverage.
-- If it still fails, inspect the next coarse FFmpeg failure class and HLS tag/segment format before broadening request context or relay logic.
+- Complete `diag/hls-no-stream` to classify the remaining HLS playlist as ordinary A/V, fMP4, subtitle/image, LL-HLS, or protected media.
+- Keep PR #8 unmerged until the no-stream result is explained; its extension-policy change is only partially validated.
+- After classification, implement the narrowest compatible HLS fix or explicitly mark protected media unsupported.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
