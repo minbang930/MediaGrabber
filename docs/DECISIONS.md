@@ -36,6 +36,18 @@ Alternatives considered:
 
 Consequence: the next implementation should first reduce XHR/fetch/MSE hook invasiveness and validate playback before changing reconstruction logic.
 
+## 2026-09-24 — Exclude image-only HLS from A/V candidates
+
+Decision: an HLS media playlist whose parsed segments are all recognized image files is not presented as a downloadable audio/video candidate.
+
+Evidence: on the tested site the visible HLS contained 1118 image segments, FFmpeg probed the decrypted child as `image2`, and the actual `mse` media candidate was already present but hidden by duration-first visibility.
+
+Consequences:
+
+- image/thumbnail/storyboard HLS cannot suppress a real MSE candidate;
+- master HLS and ordinary audio/video HLS remain eligible;
+- classification is based on parsed segment roles rather than site-specific URL matching.
+
 ## Inherited architecture decisions
 
 The current codebase already embodies these upstream choices:
