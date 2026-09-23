@@ -188,6 +188,8 @@ const activeDownloads = new Map<string, {
     requestedRate?: number;
     effectiveRate?: number;
     targetMode?: string;
+    pipState?: string;
+    pipDetail?: string;
   };
 }>();
 
@@ -1251,6 +1253,9 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
     case 'MSE_CAPTURE_ACCELERATION':
       return handleMseCaptureAcceleration(sender, message);
 
+    case 'MSE_CAPTURE_PIP':
+      return handleMseCapturePip(sender, message);
+
     case 'MSE_CAPTURE_FINISH':
       return handleMseCaptureFinish(sender, message);
 
@@ -1318,6 +1323,8 @@ function updateMseCapturePhase(
     requestedRate: number;
     effectiveRate: number;
     targetMode: string;
+    pipState: string;
+    pipDetail: string;
   }> = {}
 ): void {
   const dl = activeDownloads.get(session.downloadKey);
@@ -1330,6 +1337,8 @@ function updateMseCapturePhase(
     requestedRate: extra.requestedRate ?? previous?.requestedRate,
     effectiveRate: extra.effectiveRate ?? previous?.effectiveRate,
     targetMode: extra.targetMode ?? previous?.targetMode,
+    pipState: extra.pipState ?? previous?.pipState,
+    pipDetail: extra.pipDetail ?? previous?.pipDetail,
     capture: true,
     phase
   };
@@ -1452,6 +1461,25 @@ function handleMseCaptureAcceleration(sender: chrome.runtime.MessageSender, mess
   const targetMode = String(message.targetMode || 'unknown');
   const currentPhase = activeDownloads.get(session.downloadKey)?.lastProgress?.phase || 'hook-armed';
   updateMseCapturePhase(session, currentPhase, { requestedRate, effectiveRate, targetMode });
+  return { success: true };
+}
+
+function handleMseCapturePip(sender: chrome.runtime.MessageSender, message: any): any {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    session.finalizing ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  const pipState = String(message.state || 'unknown');
+  const pipDetail = String(message.detail || '');
+  const currentPhase = activeDownloads.get(session.downloadKey)?.lastProgress?.phase || 'hook-armed';
+  updateMseCapturePhase(session, currentPhase, { pipState, pipDetail });
   return { success: true };
 }
 
