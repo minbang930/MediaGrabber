@@ -20,6 +20,17 @@
   let pageGeneration = 0;
   const mediaSourceGenerations = new WeakMap<MediaSource, number>();
   const sourceBufferGenerations = new WeakMap<SourceBuffer, number>();
+  const sourceBufferDiagnosticIds = new WeakMap<SourceBuffer, number>();
+  const sourceBufferDiagnostics = new Map<number, {
+    id: number;
+    mime: string;
+    initScanned: boolean;
+    drmMarkers: string[];
+    codecMarkers: string[];
+  }>();
+  let nextSourceBufferDiagnosticId = 1;
+  let encryptedEventCount = 0;
+  const encryptedInitDataTypes = new Map<string, number>();
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -39,7 +50,75 @@
     MSE_STATE.segmentUrls = [];
     MSE_STATE.initSegmentUrl = null;
     MSE_STATE.duration = 0;
+    sourceBufferDiagnostics.clear();
+    nextSourceBufferDiagnosticId = 1;
+    encryptedEventCount = 0;
+    encryptedInitDataTypes.clear();
   }
+
+  function getAppendView(data: any): Uint8Array | undefined {
+    try {
+      if (data instanceof ArrayBuffer) return new Uint8Array(data);
+      if (ArrayBuffer.isView(data)) {
+        return new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+      }
+    } catch {}
+    return undefined;
+  }
+
+  function hasAsciiMarker(view: Uint8Array, marker: string): boolean {
+    const bytes = Array.from(marker).map((char) => char.charCodeAt(0));
+    const limit = Math.min(view.byteLength, 512 * 1024);
+    outer: for (let i = 0; i <= limit - bytes.length; i++) {
+      for (let j = 0; j < bytes.length; j++) {
+        if (view[i + j] !== bytes[j]) continue outer;
+      }
+      return true;
+    }
+    return false;
+  }
+
+  function scanInitMarkers(view: Uint8Array | undefined): {
+    drmMarkers: string[];
+    codecMarkers: string[];
+  } {
+    if (!view) return { drmMarkers: [], codecMarkers: [] };
+
+    const drmMarkers = ['pssh', 'sinf', 'schm', 'tenc', 'encv', 'enca', 'cenc', 'cbcs']
+      .filter((marker) => hasAsciiMarker(view, marker));
+    const codecMarkers = ['avc1', 'avc3', 'hev1', 'hvc1', 'av01', 'vp09', 'mp4a', 'opus']
+      .filter((marker) => hasAsciiMarker(view, marker));
+
+    return { drmMarkers, codecMarkers };
+  }
+
+  function postDrmBoundaryDiagnostic(generation = pageGeneration): void {
+    postToContentScript({
+      type: 'drm-boundary-diagnostic',
+      encryptedEventCount,
+      encryptedInitDataTypes: Object.fromEntries(encryptedInitDataTypes),
+      buffers: Array.from(sourceBufferDiagnostics.values()).map((state) => ({
+        id: state.id,
+        mime: state.mime,
+        initScanned: state.initScanned,
+        drmMarkers: state.drmMarkers,
+        codecMarkers: state.codecMarkers
+      }))
+    }, generation);
+  }
+
+  document.addEventListener('encrypted', (event: Event) => {
+    try {
+      const encryptedEvent = event as MediaEncryptedEvent;
+      encryptedEventCount++;
+      const initDataType = encryptedEvent.initDataType || 'unknown';
+      encryptedInitDataTypes.set(
+        initDataType,
+        (encryptedInitDataTypes.get(initDataType) || 0) + 1
+      );
+      postDrmBoundaryDiagnostic();
+    } catch {}
+  }, true);
 
   function notifyNavigation(): void {
     pageGeneration++;
@@ -155,6 +234,20 @@
     }
     const sourceBuffer = origAddSourceBuffer.call(this, mimeType);
     sourceBufferGenerations.set(sourceBuffer, generation);
+
+    if (isVideoMime(mimeType) && generation === pageGeneration) {
+      const id = nextSourceBufferDiagnosticId++;
+      sourceBufferDiagnosticIds.set(sourceBuffer, id);
+      sourceBufferDiagnostics.set(id, {
+        id,
+        mime: mimeType.split(';', 1)[0].trim().toLowerCase(),
+        initScanned: false,
+        drmMarkers: [],
+        codecMarkers: []
+      });
+      postDrmBoundaryDiagnostic(generation);
+    }
+
     return sourceBuffer;
   };
 
@@ -171,6 +264,16 @@
       }
 
       MSE_STATE.segmentCount++;
+
+      const diagnosticId = sourceBufferDiagnosticIds.get(this);
+      const diagnostic = diagnosticId ? sourceBufferDiagnostics.get(diagnosticId) : undefined;
+      if (diagnostic && !diagnostic.initScanned) {
+        const markers = scanInitMarkers(getAppendView(data));
+        diagnostic.initScanned = true;
+        diagnostic.drmMarkers = markers.drmMarkers;
+        diagnostic.codecMarkers = markers.codecMarkers;
+        postDrmBoundaryDiagnostic(generation);
+      }
 
       if (MSE_STATE.segmentCount === 1) {
         postToContentScript({
