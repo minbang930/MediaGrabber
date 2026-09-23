@@ -1166,6 +1166,9 @@ async function handleCancelDownload(downloadId: string): Promise<any> {
     await nativeClient.abortYtdlp(dl.pid);
   } else if (dl.type === 'direct' && dl.downloadId !== undefined) {
     await nativeClient.cancelDownload(dl.downloadId);
+  } else if (dl.type === 'mse-capture' && dl.tabId !== undefined) {
+    await abortMseCaptureForTab(dl.tabId);
+    return { success: true };
   }
 
   activeDownloads.delete(downloadId);
