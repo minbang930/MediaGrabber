@@ -107,4 +107,5 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 - The separate direct-download test still returns HTTP 404. Does that path require a safe Referer/Origin context, another non-sensitive request property, or simply a fresher/intermediate URL?
 - The MSE append-capture path is validated on the tested transformed-XHR player, but broader compatibility remains evidence-driven; do not infer universal MSE support from this result.
+- Experiment branch `exp/mse-detached-capture-window` tests whether moving the capture tab into its own non-minimized active window lets capture continue while the user works in a different browser window, without spoofing Page Visibility.
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
