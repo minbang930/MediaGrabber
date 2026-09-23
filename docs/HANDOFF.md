@@ -22,9 +22,11 @@ The separate direct-download candidate on another tested site still returns HTTP
 
 ## Next actions
 
-1. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, freshness/redirect behavior, and the minimum non-sensitive request context available to the extension/CoApp.
-2. If request context is required, design the narrowest safe propagation model; do not copy cookies, authorization tokens, or broad browser headers by default.
-3. Keep MSE compatibility evidence-driven and preserve the validated player behavior/DRM boundary.
+1. Build/load `exp/mse-detached-capture-window` and test one MSE download: press Download, let the video move/reload in the dedicated capture window, press Play once, and confirm focus returns to the original window after capture starts.
+2. Stay in the original window and use other tabs while leaving the dedicated capture window open and non-minimized. Confirm accelerated capture still completes and the output is normal.
+3. Test Cancel once and confirm the tab returns to the original window with normal playback/rate behavior.
+4. If detached-window capture fails, record whether playback itself pauses when the capture window loses focus; do not jump to visibility spoofing without that evidence.
+5. Then return to the direct-download HTTP 404 investigation.
 
 ## Start here
 
