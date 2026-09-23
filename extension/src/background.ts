@@ -226,7 +226,10 @@ async function hasMseOffscreenDocument(): Promise<boolean> {
 
 async function ensureMseOffscreenDocument(): Promise<void> {
   const offscreen = (chrome as any).offscreen;
-  if (!offscreen?.createDocument) {
+  const runtime = chrome.runtime as typeof chrome.runtime & {
+    getContexts?: (filter: any) => Promise<any[]>;
+  };
+  if (!offscreen?.createDocument || typeof runtime.getContexts !== 'function') {
     throw new Error('Background MSE keep-alive requires Chrome 116 or newer.');
   }
   if (await hasMseOffscreenDocument()) return;
@@ -1613,6 +1616,7 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
 
   try {
     updateMseCapturePhase(session, 'finalizing');
+    await stopMseTabCaptureKeepAlive(session.tabId);
 
     const captured = await nativeClient.mseCaptureFinish(session.sessionId);
     const args = buildMseMuxArgs(captured.tracks, session.outputPath);
@@ -1630,8 +1634,6 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
     } catch {
       // The output file is already complete; temp cleanup is best-effort.
     }
-
-    await stopMseTabCaptureKeepAlive(session.tabId);
 
     popupPorts.forEach((port) => {
       port.postMessage({
