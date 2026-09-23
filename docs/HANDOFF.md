@@ -21,9 +21,9 @@ A separate direct-download test currently fails with HTTP 404.
 ## Next actions
 
 1. Pull/rebuild the latest `fix/mse-append-capture` extension. The CoApp capture RPC did not change in the follow-up, so reinstalling the branch CoApp is unnecessary if the previous PR #22 CoApp binary is already installed.
-2. Reload the extension and confirm the popup no longer cycles through media from other tabs.
-3. Select the MSE item and press Download. The tab should reload once; manual playback after reload is expected. Start from the beginning and let it run until the media/source ends.
-4. Watch the popup status: it should show `Capturing… <size> · <fragments> fragments`, then `Capture complete — finalizing MP4…`. Report the last visible phase if it stops progressing.
+2. Reload the extension and select the MSE item for the tested tab.
+3. Press Download. The tab should reload once; manual playback after reload is expected. Start from the beginning.
+4. Report the last lifecycle status reached: `waiting for the reloaded player frame`, `Player frame connected`, `Capture hook armed`, `First media fragment captured`, `Capturing…`, or `finalizing MP4…`. There is no need to play the entire video if the status is stuck before `Capturing…`.
 5. Verify that the Downloads output is a complete playable file with both video and audio. If it fails, report only the visible MediaGrabber error/status; do not expose request credentials or source URLs.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
