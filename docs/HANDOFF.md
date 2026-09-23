@@ -20,13 +20,11 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Pull the latest `fix/mse-append-capture`, rebuild the branch CoApp, and replace the installed CoApp binary. The latest fix is in `coapp/src/mse-capture.ts`, so the previously installed PR #22 CoApp is now stale.
-2. Reload the extension and select the MSE item for the tested tab.
-3. Press Download. The tab should reload once; manual playback after reload is expected. Start from the beginning.
-4. After reload, confirm the status advances past `waiting for the reloaded player frame` to `Player frame connected` and `Capture hook armed`. Start playback; then report the last status reached (`First media fragment captured`, `Capturing…`, or later). There is no need to play the entire video if it still stops before `Capturing…`.
-5. Verify that the Downloads output is a complete playable file with both video and audio. If it fails, report only the visible MediaGrabber error/status; do not expose request credentials or source URLs.
-4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
-5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
+1. Validate Cancel during an active accelerated MSE capture: capture should stop, playback should remain usable, the original playback rate should be restored, and no partial final output should be reported as complete.
+2. Validate temporary-file cleanup after cancel/error/success using only filesystem presence/count checks; do not inspect or log media contents.
+3. Add deterministic coverage for native fragment ordering/completeness, session validation, and capture-state helpers, then add a basic PR build workflow.
+4. After those checks, review the full PR #22 diff/status and merge to main if clean.
+5. Return to the separate direct-download HTTP 404 and determine the minimal safe request context required.
 
 ## Start here
 
