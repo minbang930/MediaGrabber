@@ -92,6 +92,28 @@ Constraints:
 
 Consequence: seek-based acceleration remains a fallback research direction only for transports where chronological playback-rate acceleration is ineffective.
 
+## 2026-09-24 — Use hidden tabCapture to keep explicit MSE capture active under occlusion
+
+Decision: during an explicit MSE append-capture session, hold a video-only Chrome `tabCapture` stream in an offscreen extension document so the target tab continues rendering when backgrounded or fully occluded.
+
+Evidence:
+
+- a detached normal browser window stalled when another maximized application completely covered it;
+- real-video PiP and synthetic helper PiP both kept capture progressing, but both required a visible browser-managed PiP window;
+- hidden offscreen-consumed `tabCapture` kept the tested MSE workflow progressing both in another browser tab and while another maximized application fully covered the browser;
+- successful completion and cancellation both ended the tab-capture indicator/stream, and cancellation still restored the original playback rate.
+
+Privacy and compatibility constraints:
+
+- request video only; do not request page audio for keep-alive;
+- do not save, inspect, forward, or treat the captured pixels as download content;
+- keep SourceBuffer append capture as the sole media-data path for this workflow;
+- stop the tab-capture stream on success, cancellation, error, or tab close;
+- do not spoof Page Visibility, focus/blur, player handlers, or DRM behavior;
+- treat Chrome's visible capture/share indicator as expected browser UI.
+
+Consequence: visible PiP is no longer required for the validated Windows/Chromium MSE background-capture workflow. Real-video PiP remains historical fallback evidence, not the preferred architecture.
+
 ## Inherited architecture decisions
 
 The current codebase already embodies these upstream choices:
