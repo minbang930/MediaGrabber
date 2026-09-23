@@ -379,7 +379,7 @@ Observed sequence:
 
 - Draft PR #25 moved the player into a dedicated normal browser window. Capture continued while that window remained at least partially visible, but stopped when another maximized application fully covered it and resumed when it became visible again.
 - Draft PR #26 used standard video Picture-in-Picture for the real captured video. User validation confirmed capture/download continued while using other tabs and while another maximized application covered the browser.
-- Draft PR #27 replaced the real-video PiP target with a synthetic 320×40 black helper video. User validation again confirmed background capture continued, but the browser still presented a normal visible PiP window rather than a practically hidden/thin surface.
+- PR #27 (closed without merge) replaced the real-video PiP target with a synthetic 320×40 black helper video. User validation again confirmed background capture continued, but the browser still presented a normal visible PiP window rather than a practically hidden/thin surface.
 
 Interpretation:
 
