@@ -142,6 +142,29 @@ Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excl
 
 Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
+## 2026-09-24 — MSE candidate has no All Segments quality
+
+Observation after PR #15:
+
+- video playback remains normal;
+- the real MSE candidate is visible;
+- the popup shows only `MSE Stream`; no `All Segments` quality appears;
+- downloading the lone MSE option fails with the generic FFmpeg-open error.
+
+Repository facts:
+
+- `content.ts` adds `All Segments` only when both `segmentUrls.length > 0` and `initSegmentUrl` are present;
+- when that condition is false, the MSE candidate can fall back to the browser `blob:` URL, which a native FFmpeg process cannot open;
+- the injector internally treats the first captured segment-like URL as an init candidate, but the content script only sets its own `initSegmentUrl` when the posted URL explicitly contains `init`.
+
+Open diagnostic split:
+
+- appended MSE bytes exist but segment URL capture is zero/insufficient;
+- segment URLs are captured but opaque naming prevents explicit-init propagation;
+- multiple SourceBuffers are being collapsed into one global state.
+
+Branch `diag/mse-capture-state` exposes only numeric/boolean counters in the MSE quality label: source-buffer count, append count, captured-URL count, explicit-init presence, injector-side init presence, and blob presence. No URL is displayed.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
