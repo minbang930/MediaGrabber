@@ -336,7 +336,7 @@
       trackId: number;
       mime: string;
       fragmentIndex: number;
-      chunks: Uint8Array[];
+      view: Uint8Array;
       bytes: number;
     } | undefined;
 
@@ -375,17 +375,12 @@
             const fragmentIndex = captureFragmentIndexes.get(track.id) || 0;
             captureFragmentIndexes.set(track.id, fragmentIndex + 1);
 
-            const chunks: Uint8Array[] = [];
-            for (let offset = 0; offset < view.byteLength; offset += CAPTURE_CHUNK_BYTES) {
-              chunks.push(view.slice(offset, Math.min(view.byteLength, offset + CAPTURE_CHUNK_BYTES)));
-            }
-
             capturePayload = {
               sessionId: activeCaptureSession,
               trackId: track.id,
               mime: track.mime,
               fragmentIndex,
-              chunks,
+              view,
               bytes: view.byteLength
             };
           }
@@ -420,6 +415,16 @@
       activeCaptureSession === capturePayload.sessionId &&
       !captureFinished
     ) {
+      const chunks: Uint8Array[] = [];
+      for (let offset = 0; offset < capturePayload.view.byteLength; offset += CAPTURE_CHUNK_BYTES) {
+        chunks.push(
+          capturePayload.view.slice(
+            offset,
+            Math.min(capturePayload.view.byteLength, offset + CAPTURE_CHUNK_BYTES)
+          )
+        );
+      }
+
       captureBytes += capturePayload.bytes;
       captureFragments++;
       postCaptureFragment(
@@ -427,7 +432,7 @@
         capturePayload.trackId,
         capturePayload.mime,
         capturePayload.fragmentIndex,
-        capturePayload.chunks
+        chunks
       );
 
       if (captureFragments === 1 || captureFragments % 10 === 0) {
