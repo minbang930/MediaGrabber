@@ -21,6 +21,9 @@ class MediaDetector {
   private pageGeneration = 0;
   private mseHookReady = false;
   private mseCaptureSessionId: string | undefined;
+  private mseCaptureStarted = false;
+  private mseCaptureStartAttempts = 0;
+  private mseCaptureStartTimer: number | undefined;
   private mseCaptureSendQueue: Promise<void> = Promise.resolve();
   private mseCaptureFinished = false;
   private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
@@ -95,6 +98,16 @@ class MediaDetector {
         case 'mse-hook-ready':
           this.mseHookReady = true;
           this.maybeStartMseCapture();
+          break;
+
+        case 'mse-capture-started':
+          if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
+            this.mseCaptureStarted = true;
+            if (this.mseCaptureStartTimer !== undefined) {
+              clearTimeout(this.mseCaptureStartTimer);
+              this.mseCaptureStartTimer = undefined;
+            }
+          }
           break;
 
         case 'mse-capture-chunk':
@@ -227,6 +240,11 @@ class MediaDetector {
           sessionId: this.mseCaptureSessionId
         }, '*');
         this.mseCaptureFinished = true;
+        this.mseCaptureStarted = false;
+        if (this.mseCaptureStartTimer !== undefined) {
+          clearTimeout(this.mseCaptureStartTimer);
+          this.mseCaptureStartTimer = undefined;
+        }
         sendResponse({ success: true });
         return;
       }
@@ -240,6 +258,8 @@ class MediaDetector {
         if (response?.active && typeof response.sessionId === 'string') {
           this.mseCaptureSessionId = response.sessionId;
           this.mseCaptureFinished = false;
+          this.mseCaptureStarted = false;
+          this.mseCaptureStartAttempts = 0;
           this.maybeStartMseCapture();
         }
       });
@@ -249,12 +269,25 @@ class MediaDetector {
   }
 
   private maybeStartMseCapture(): void {
-    if (!this.mseHookReady || !this.mseCaptureSessionId || this.mseCaptureFinished) return;
+    if (!this.mseCaptureSessionId || this.mseCaptureFinished || this.mseCaptureStarted) return;
+    if (!this.mseHookReady && this.mseCaptureStartAttempts === 0) {
+      // The MAIN-world hook may post its ready event before this listener exists.
+      // Continue with a bounded retry handshake instead of relying on ordering.
+    }
+
     window.postMessage({
       source: 'MediaGrabber-Content',
       type: 'mse-capture-start',
       sessionId: this.mseCaptureSessionId
     }, '*');
+
+    this.mseCaptureStartAttempts++;
+    if (this.mseCaptureStartAttempts >= 40) return;
+    if (this.mseCaptureStartTimer !== undefined) clearTimeout(this.mseCaptureStartTimer);
+    this.mseCaptureStartTimer = window.setTimeout(() => {
+      this.mseCaptureStartTimer = undefined;
+      this.maybeStartMseCapture();
+    }, 100);
   }
 
   private bytesToBase64(bytes: Uint8Array): string {
