@@ -169,7 +169,19 @@ Closed PR #10 browser-response result during normal playback:
 
 Because playback is normal, `text/plain` alone cannot be treated as proof of a bad segment response. The next experiment is request-context presence only.
 
-Follow-up branch `diag/hls-request-context` stores only hashed URL identifiers in memory and counts whether exact-matched segment/key requests contain Cookie, Authorization, Range, Referer, or Origin headers. It does not store or display any header value.
+Closed PR #11 request-context presence result:
+
+- 37 segment requests observed;
+- Cookie: 0/37;
+- Authorization: 0/37;
+- Range: 0/37;
+- Referer: 37/37;
+- Origin: 37/37;
+- 1 AES key request observed with the same pattern: Referer + Origin present, Cookie/Authorization/Range absent.
+
+Interpretation: missing Cookie, Authorization, or Range is not supported as the cause. MediaGrabber already attempts to send Referer and Origin to FFmpeg, so the next unresolved question is whether the browser values exactly match the values MediaGrabber constructs.
+
+Follow-up branch `diag/hls-header-value-match` transiently hashes browser Referer/Origin values and reports only equality counts against the FFmpeg values. Raw header values are not retained or displayed.
 
 ## Candidate reconstruction issue
 
