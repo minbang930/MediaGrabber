@@ -14,27 +14,28 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #28 has completed manual acceptance for MSE background keep-alive. The validated flow is now: explicit clear-SourceBuffer capture + up to 8× chronological playback + video-only Chrome `tabCapture` held by a hidden offscreen extension document.
+PR #28 (`fix: keep MSE capture active while occluded`) merged to `main` as `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
 
-Manual validation passed for:
+The validated transformed-XHR MSE flow is now:
 
-- no MediaGrabber PiP requirement;
-- capture continuing after switching to another browser tab;
-- capture continuing while another maximized application fully covers the browser window;
-- successful completion ending the Chrome capture/share indicator;
-- Cancel ending the capture/share indicator, restoring the original playback rate, and leaving the player usable.
+- explicit clear `SourceBuffer.appendBuffer()` capture after user-triggered Download/reload;
+- native ordered per-track spooling and FFmpeg mux;
+- chronological playback acceleration up to 8× with restoration on exit;
+- video-only Chrome `tabCapture` consumed in a hidden offscreen extension document so capture continues in background tabs and while another maximized application fully occludes the browser;
+- no visible MediaGrabber PiP requirement;
+- success/Cancel both stop the browser capture indicator/stream; Cancel restores playback rate and leaves the player usable;
+- protected EME/CENC media remains out of scope.
 
-PR #28 also passed the Windows/Node 22 build/test/package CI before final cleanup. The test-only PR28 name/version/popup markers have been removed; final CI/merge verification is the remaining repository step.
+The superseded real-video PiP PR #26 and helper-PiP PR #27 are closed without merge.
 
-The next compatibility problem after this merge is the separate direct-download HTTP 404. Its exact cause remains unproven; request-context propagation remains a candidate, not a conclusion.
+The active compatibility problem is again the separate direct-download HTTP 404. Its exact cause remains unproven. Current direct downloads still do not propagate saved browser request context even though the CoApp supports caller-provided headers; treat request-context propagation as a hypothesis to test narrowly, not as the root cause.
 
 ## Next actions
 
-1. Confirm final PR #28 CI after removal of diagnostic build markers and documentation finalization.
-2. Review the final diff, mark the PR ready, merge it, and verify latest `main`.
-3. Close the superseded real-video PiP draft PR #26 after PR #28 is merged.
-4. Return to the direct-download HTTP 404 investigation from current `main`, testing URL freshness/provenance before adding browser request context.
-5. If request context is proven necessary, propagate only the minimum non-sensitive values required; do not copy cookies, authorization tokens, or broad browser headers by default.
+1. Verify post-merge `main` CI for commit `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
+2. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, URL freshness/redirect behavior, and whether the detected URL is intermediate/non-download.
+3. Only if needed, determine the minimum non-sensitive request context required; do not copy cookies, authorization tokens, or broad browser headers by default.
+4. Preserve the validated MSE player behavior, tabCapture privacy boundary, and DRM boundary while making unrelated compatibility changes.
 
 ## Start here
 
