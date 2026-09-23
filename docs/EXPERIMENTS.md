@@ -142,6 +142,25 @@ Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excl
 
 Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
+## 2026-09-24 — MSE fMP4 appends correlate to XHR by timing, not size
+
+Closed PR #16 result:
+
+- two SourceBuffers;
+- 50 appendBuffer calls;
+- zero URLs captured by the current filename-based fetch/XHR heuristic.
+
+Closed PR #17 result:
+
+- audio SourceBuffer: `ftyp` once, then 29 `moof` appends;
+- video SourceBuffer: `ftyp` once, then 29 `moof` appends;
+- every append had a recent `xmlhttprequest` PerformanceResourceTiming entry;
+- exact/near body-size matches were zero for both buffers.
+
+Interpretation: both tracks are ordinary fragmented MP4, and their data arrives through XHR. Resource Timing size metadata is not suitable for associating the response to the appended bytes, but timing remains a promising low-interference correlation signal.
+
+Follow-up branch `diag/mse-xhr-timing` records only counts of append events with an XHR response ending within 20/100/500 ms and whether the 100 ms window contains exactly one or multiple XHR candidates. No URL, header value, or media payload is retained or displayed.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
