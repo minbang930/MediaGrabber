@@ -34,7 +34,8 @@ Read:
 - extension/src/mse-inject.ts
 - extension/src/content.ts
 - extension/src/background.ts around startDownload(), HLS rewriting, and direct download
-- coapp/src/downloads.ts
+- coapp/src/mse-capture.ts
+- coapp/src/converter.ts
 - docs/EXPERIMENTS.md
 
 Verification baseline:
