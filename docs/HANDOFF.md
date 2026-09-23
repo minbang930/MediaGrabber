@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 fixed the player regression and PR #6 reduced the popup from 14 entries to 1. PR #8 removes the prior terminal `invalid-data` but FFmpeg still reaches output with zero streams. PRs #9-#12 progressively ruled out protected SAMPLE-AES structure, failed browser segment responses, missing Cookie/Auth/Range, and Referer/Origin mismatch. Branch `diag/hls-segment-probe` now inspects only FFmpeg's post-decryption segment probe result.
+PR #3 fixed the player regression and PR #6 reduced the popup from 14 entries to 1. PR #8 removes the prior terminal `invalid-data` but FFmpeg still reaches output with zero streams. PRs #9-#12 progressively ruled out protected SAMPLE-AES structure, failed browser segment responses, missing Cookie/Auth/Range, and Referer/Origin mismatch. Draft PR #13 (`diag/hls-segment-probe`) now inspects only FFmpeg's post-decryption segment probe result.
 
 A separate direct-download test currently fails with HTTP 404.
 
