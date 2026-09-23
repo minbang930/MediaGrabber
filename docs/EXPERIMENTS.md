@@ -120,7 +120,7 @@ Follow-up fix on `fix/filter-dom-source-noise`:
 - normalize DOM media URLs to absolute HTTP(S) URLs;
 - reject blob/data/other non-HTTP(S) URLs from generic direct registration.
 
-Status: implementation complete on the branch, real-site popup-count and playback validation pending.
+Result: user manual validation confirmed the popup dropped from 14 entries to 1. The remaining entry is the HLS candidate previously identified by response Content-Type. Downloading that entry still fails in FFmpeg with the generic "could not open stream" error. Conclusion: the DOM noise fix is successful; HLS download failure is a separate issue.
 
 ## Candidate reconstruction issue
 
