@@ -440,10 +440,16 @@ Interpretation:
 - hidden offscreen consumption of the tabCapture stream is sufficient to prevent the previously observed same-browser background-tab stall on the tested player;
 - this does not yet prove behavior when another maximized application fully occludes the browser window.
 
-Remaining acceptance:
+Full native-window occlusion result:
 
-- fully cover the browser with another maximized application and confirm captured bytes/fragments continue increasing;
-- verify successful completion and Cancel both end the tab-capture indicator/stream and preserve playback-rate restoration.
+- while another maximized application completely covered the browser window, the MSE download/capture continued progressing normally.
+
+Confirmed interpretation:
+
+- on the tested Windows/Chromium player, an active hidden offscreen-consumed `tabCapture` stream is sufficient to prevent the previously observed occlusion stall;
+- visible PiP is not required for this keep-alive behavior;
+- the remaining acceptance is teardown only: successful completion and Cancel must both end the tab-capture indicator/stream, and Cancel must still restore the original playback rate.
+
 
 
 ## Candidate reconstruction issue
