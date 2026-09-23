@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate the minimized MAIN-world XHR hook on the problematic player without removing MSE detection.
-- Confirm playback first; if it still fails, isolate the remaining fetch/MediaSource/SourceBuffer hooks one layer at a time.
-- Identify the transport behind the many fragment-like detections seen when the hook is disabled.
+- Playback regression fixed by minimizing XHR instrumentation; PR #3 merged after user validation.
+- Validate explicit MSE segment ownership suppression and confirm the popup no longer exposes the roughly 14 raw fragment entries.
+- Identify any remaining entries after ownership-based suppression before adding broader heuristics.
 - Make MSE/full-stream reconstruction reliable for that transport.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
