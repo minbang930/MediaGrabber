@@ -98,8 +98,8 @@ The strongest current compatibility hypothesis is that the previous XHR construc
 
 ## Open questions
 
-- Which exact part of the XHR/MSE hook breaks the tested player?
-- What transport pattern produces the roughly 14 detected fragment entries when MAIN-world MSE hooking is disabled?
+- What detection pipeline and transport pattern produce the persistent roughly 14 media entries now that playback is fixed?
+- Are those entries HLS/DASH manifests, raw URL detections, DOM detections, or MSE entries? The provenance diagnostic branch is intended to answer this before further grouping changes.
 - Does that site expose a recoverable HLS/DASH manifest, or does it require reliable MSE fragment reconstruction?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
