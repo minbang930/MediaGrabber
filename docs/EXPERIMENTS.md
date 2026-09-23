@@ -500,7 +500,7 @@ Manual acceptance required:
 - the previously validated transformed-XHR MSE site still exposes an MSE candidate;
 - MSE Download still reloads, captures, accelerates, survives background/occlusion, completes correctly, and cleans up on Cancel.
 
-Status: implementation branch prepared; CI and manual browser validation pending.
+Status: PR #30 CI passed on Windows/Node 22 (install, full build, CoApp tests, extension package smoke check); manual browser validation pending.
 
 ## Candidate reconstruction issue
 
