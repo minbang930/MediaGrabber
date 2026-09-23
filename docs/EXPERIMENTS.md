@@ -194,6 +194,27 @@ Follow-up changes on PR #22:
 - capture UI now reports captured bytes/fragments and a distinct finalizing phase.
 
 Status: second real-site validation pending. The first run confirms capture arming/reload works, but does not yet confirm that fragment transport or final mux completes.
+## 2026-09-24 — Second append-capture validation: tab isolation fixed, capture phase still opaque
+
+Observation:
+
+- after the popup tab-scoping fix, media from other tabs no longer appears during the capture workflow;
+- Download still reloads the selected tab once;
+- the popup remains in the generic armed/downloading UI after manual playback, with no visible captured-byte/fragment progress.
+
+Interpretation:
+
+- the cross-tab popup broadcast defect is confirmed fixed by user validation;
+- the remaining blocker could be before capture-frame attachment, between the content script and MAIN-world hook, or before the first fragment reaches background;
+- the previous popup restore path also overwrote stored capture-phase status with a generic `Downloading…` label, so UI alone could not distinguish those states.
+
+Follow-up on PR #22:
+
+- persist control-plane phases in the active download: `reload`, `frame-ready`, `hook-armed`, `first-fragment`, `capture`, and `finalizing`;
+- content reports the first MAIN-world `mse-capture-started` acknowledgement to background;
+- popup restore preserves and renders the stored capture phase instead of replacing it with generic download text.
+
+Status: third focused validation pending.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
