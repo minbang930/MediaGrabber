@@ -428,6 +428,23 @@ Diagnostic follow-up:
 - PR #28 now uses manifest name `MediaGrabber [tabCapture test]`, version name `1.1.1-pr28-tabcapture`, and a popup `[PR28 tabCapture]` marker;
 - rebuild after deleting `extension/dist` to rule out stale generated assets before attributing the PiP to the site/browser.
 
+Second PR #28 manual attempt result:
+
+- the PR #28 build marker was visible, confirming the intended tabCapture branch was actually loaded;
+- no MediaGrabber PiP window was required;
+- Chrome showed its tab/screen sharing-style capture indicator, consistent with an active `tabCapture` stream;
+- MSE download/capture continued while the user switched to another browser tab.
+
+Interpretation:
+
+- hidden offscreen consumption of the tabCapture stream is sufficient to prevent the previously observed same-browser background-tab stall on the tested player;
+- this does not yet prove behavior when another maximized application fully occludes the browser window.
+
+Remaining acceptance:
+
+- fully cover the browser with another maximized application and confirm captured bytes/fragments continue increasing;
+- verify successful completion and Cancel both end the tab-capture indicator/stream and preserve playback-rate restoration.
+
 
 ## Candidate reconstruction issue
 
