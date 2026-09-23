@@ -261,6 +261,24 @@ Fix on PR #22:
 - flush also checks every indexed chunk and throws an explicit invariant error if completeness is violated.
 
 Status: CoApp rebuild/replacement and focused revalidation pending.
+## 2026-09-24 — Append-capture end-to-end validation passed
+
+After the native fragment-completeness fix, user validation completed successfully:
+
+- Download armed the capture and reloaded the selected tab once;
+- manual playback after reload proceeded normally;
+- MSE fragments were captured and spooled without the previous undefined-chunk error;
+- capture finalized and FFmpeg mux completed;
+- a playable output file was created successfully.
+
+Confirmed limitation of the current architecture:
+
+- MediaGrabber only receives post-transform fMP4 fragments when the page/player actually appends them to SourceBuffer;
+- therefore a complete file requires the player to load the full timeline;
+- on the tested player, the reliable method is playback from the beginning to the end;
+- seeking ahead is not considered a safe substitute because skipped intervals may never be appended.
+
+This is now a UX/performance limitation rather than a functional failure.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
