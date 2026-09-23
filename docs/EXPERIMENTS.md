@@ -122,6 +122,32 @@ Follow-up fix on `fix/filter-dom-source-noise`:
 
 Result: user manual validation confirmed the popup dropped from 14 entries to 1. The remaining entry is the HLS candidate previously identified by response Content-Type. Downloading that entry still fails in FFmpeg with the generic "could not open stream" error. Conclusion: the DOM noise fix is successful; HLS download failure is a separate issue.
 
+## 2026-09-24 — HLS FFmpeg invalid-data diagnostic
+
+Observed diagnostic for the single remaining HLS entry:
+
+- playlist type: `media`;
+- variants: 0;
+- segments: 1118;
+- relay codec: no;
+- relay mappings: 0;
+- referer present: yes;
+- manifest rewrite: no;
+- FFmpeg failure class: `invalid-data`.
+
+Interpretation: the extension can fetch and parse a large media playlist, and the failure is not on the relay-rewrite path. This narrows the problem to FFmpeg's handling of the remote HLS input or its child resources.
+
+Leading compatibility hypothesis: newer FFmpeg releases tightened HLS segment-extension validation. Extensionless or otherwise nonstandard segment URLs can produce `AVERROR_INVALIDDATA` when `extension_picky` is enabled. This is a strong match to the observed failure but remains a hypothesis until the fix is validated on the real site.
+
+Experiment on branch `fix/hls-extensionless-segments`:
+
+- apply `-extension_picky 0` only to HLS inputs;
+- for remote HLS input, constrain protocols to `http,https,tcp,tls,crypto,data`;
+- for rewritten temporary local manifests, additionally allow `file` because the CoApp materializes the manifest on disk;
+- do not relax the extension policy for DASH/direct/yt-dlp paths.
+
+Status: implementation complete on the branch, real-site validation pending.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
