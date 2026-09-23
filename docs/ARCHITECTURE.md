@@ -56,7 +56,7 @@ It currently instruments:
 - URL.createObjectURL;
 - MediaSource and SourceBuffer APIs.
 
-It reports MSE state and original-to-relay URL mappings to content.ts using window.postMessage.
+It reports MSE state, segment URLs, and original-to-relay URL mappings to content.ts using window.postMessage. content.ts forwards segment ownership to the background service worker once an actual MSE SourceBuffer has been observed, allowing raw network detections of the same MP4/WebM fragment URLs to be suppressed without relying on filename heuristics.
 
 This layer is currently the highest compatibility-risk component because it mutates page-global APIs. The current compatibility patch removes XMLHttpRequest constructor replacement and per-instance event-property redefinition, while retaining a minimal prototype.open observer. The project requirement is to retain observability while preserving native page semantics.
 
@@ -122,4 +122,4 @@ There is no application database. Persistent state is primarily:
 - installed local binaries and native-host manifest under the MediaGrabber user-local install directory;
 - downloaded media files.
 
-Tab detection and active-download state are runtime memory and are rebuilt as pages are observed.
+Tab detection, MSE-owned segment URL sets, and active-download state are runtime memory and are rebuilt as pages are observed.
