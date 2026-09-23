@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 merged and user validation confirmed normal playback on the previously broken site. Follow-up diagnostics traced the 14 popup entries to 12 top-frame extensionless HTTPS `<source>` descendants, 1 subframe blob currentSrc, and 1 HLS response. Diagnostic PRs #4 and #5 were closed without merge. PR #6 merged as `2bfc0884d8380fd31f9ed97310da3de39f5f0b45`; user validation confirmed the popup dropped from 14 entries to 1. Branch `diag/hls-ffmpeg-open` now classifies the remaining HLS FFmpeg failure without exposing media URLs or credentials.
+PR #3 merged and user validation confirmed normal playback on the previously broken site. Follow-up diagnostics traced the 14 popup entries to 12 top-frame extensionless HTTPS `<source>` descendants, 1 subframe blob currentSrc, and 1 HLS response. Diagnostic PRs #4 and #5 were closed without merge. PR #6 merged as `2bfc0884d8380fd31f9ed97310da3de39f5f0b45`; user validation confirmed the popup dropped from 14 entries to 1. Draft PR #7 (`diag/hls-ffmpeg-open`) now classifies the remaining HLS FFmpeg failure without exposing media URLs or credentials.
 
 A separate direct-download test currently fails with HTTP 404.
 
