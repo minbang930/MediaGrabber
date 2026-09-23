@@ -868,10 +868,10 @@ function classifyHlsEncryption(manifest: string): {
   const formats = new Set<string>();
 
   for (const line of keyLines) {
-    const method = line.match(/(?:^|,)METHOD=([^,]+)/)?.[1]?.trim().toUpperCase();
+    const method = line.match(/METHOD=([^,]+)/i)?.[1]?.trim().toUpperCase();
     if (method && method !== 'NONE') methods.add(method);
 
-    const format = line.match(/(?:^|,)KEYFORMAT="([^"]+)"/i)?.[1]?.trim().toLowerCase();
+    const format = line.match(/KEYFORMAT="([^"]+)"/i)?.[1]?.trim().toLowerCase();
     formats.add(!format || format === 'identity' ? 'identity' : 'non-identity');
   }
 
