@@ -28,10 +28,7 @@ async function startKeepAlive(tabId: number, streamId: string): Promise<void> {
     video: {
       mandatory: {
         chromeMediaSource: 'tab',
-        chromeMediaSourceId: streamId,
-        maxWidth: 320,
-        maxHeight: 180,
-        maxFrameRate: 15
+        chromeMediaSourceId: streamId
       }
     } as any
   });
