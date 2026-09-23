@@ -202,9 +202,124 @@ interface MseCaptureSession {
   outputPath: string;
   finalizing: boolean;
   firstChunkSeen: boolean;
+  originalWindowId?: number;
+  originalTabIndex?: number;
+  captureWindowId?: number;
+  placeholderTabId?: number;
+  returnedFocusToOriginalWindow: boolean;
 }
 
 const mseCaptureByTab = new Map<number, MseCaptureSession>();
+
+function isUntouchedPlaceholderTab(tab: chrome.tabs.Tab | undefined): boolean {
+  if (!tab?.id) return false;
+  const url = tab.pendingUrl || tab.url || '';
+  return !url ||
+    url === 'chrome://newtab/' ||
+    url === 'edge://newtab/' ||
+    url.startsWith('chrome-search://');
+}
+
+async function prepareDetachedMseCaptureWindow(session: MseCaptureSession): Promise<void> {
+  const tab = await chrome.tabs.get(session.tabId);
+  if (tab.windowId === chrome.windows.WINDOW_ID_NONE) {
+    throw new Error('Capture tab is not attached to a browser window.');
+  }
+
+  session.originalWindowId = tab.windowId;
+  session.originalTabIndex = tab.index;
+
+  const siblingTabs = await chrome.tabs.query({ windowId: tab.windowId });
+  if (siblingTabs.length <= 1) {
+    const placeholder = await chrome.tabs.create({
+      windowId: tab.windowId,
+      active: true
+    });
+    session.placeholderTabId = placeholder.id;
+  }
+
+  const captureWindow = await chrome.windows.create({
+    tabId: session.tabId,
+    focused: true,
+    type: 'normal'
+  });
+
+  if (captureWindow?.id === undefined) {
+    throw new Error('Could not create a dedicated MSE capture window.');
+  }
+
+  session.captureWindowId = captureWindow.id;
+}
+
+async function returnFocusToOriginalMseWindow(session: MseCaptureSession): Promise<void> {
+  if (
+    session.returnedFocusToOriginalWindow ||
+    session.originalWindowId === undefined
+  ) {
+    return;
+  }
+
+  session.returnedFocusToOriginalWindow = true;
+  try {
+    await chrome.windows.update(session.originalWindowId, { focused: true });
+  } catch {
+    // The user may have closed the original window. Capture can continue.
+  }
+}
+
+async function restoreDetachedMseCaptureTab(session: MseCaptureSession): Promise<void> {
+  const originalWindowId = session.originalWindowId;
+  if (originalWindowId === undefined) return;
+
+  let currentTab: chrome.tabs.Tab | undefined;
+  try {
+    currentTab = await chrome.tabs.get(session.tabId);
+  } catch {
+    currentTab = undefined;
+  }
+
+  if (currentTab && currentTab.windowId !== originalWindowId) {
+    let previouslyActiveTabId: number | undefined;
+    try {
+      previouslyActiveTabId = (
+        await chrome.tabs.query({ windowId: originalWindowId, active: true })
+      )[0]?.id;
+    } catch {
+      previouslyActiveTabId = undefined;
+    }
+
+    try {
+      await chrome.tabs.move(session.tabId, {
+        windowId: originalWindowId,
+        index: session.originalTabIndex ?? -1
+      });
+
+      if (
+        previouslyActiveTabId !== undefined &&
+        previouslyActiveTabId !== session.tabId
+      ) {
+        try {
+          await chrome.tabs.update(previouslyActiveTabId, { active: true });
+        } catch {
+          // The previously active tab may have been closed.
+        }
+      }
+    } catch {
+      // The original window may have been closed. Leave the capture tab in place.
+    }
+  }
+
+  if (session.placeholderTabId !== undefined) {
+    try {
+      const placeholder = await chrome.tabs.get(session.placeholderTabId);
+      if (isUntouchedPlaceholderTab(placeholder)) {
+        await chrome.tabs.remove(session.placeholderTabId);
+      }
+    } catch {
+      // Placeholder may already be gone or may have been used by the user.
+    }
+  }
+}
 
 // Popup connections
 const popupPorts = new Set<chrome.runtime.Port>();
@@ -1045,7 +1160,8 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       armedFrameIds: new Set<number>(),
       outputPath,
       finalizing: false,
-      firstChunkSeen: false
+      firstChunkSeen: false,
+      returnedFocusToOriginalWindow: false
     };
     mseCaptureByTab.set(tabId, session);
 
@@ -1066,9 +1182,19 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       }
     });
 
+    try {
+      await prepareDetachedMseCaptureWindow(session);
+    } catch (error: any) {
+      await failMseCapture(
+        session,
+        `Could not prepare the dedicated capture window: ${error?.message || String(error)}`
+      );
+      throw error;
+    }
+
     notify(
       'MSE capture armed',
-      'The page will reload. Start playback from the beginning and let it play until capture finishes.'
+      'The video moved to a dedicated capture window. Start playback once; after capture begins you can keep using your original browser window.'
     );
 
     setTimeout(() => {
@@ -1413,6 +1539,7 @@ async function handleMseCaptureChunk(sender: chrome.runtime.MessageSender, messa
   if (!session.firstChunkSeen) {
     session.firstChunkSeen = true;
     updateMseCapturePhase(session, 'first-fragment');
+    void returnFocusToOriginalMseWindow(session);
   }
 
   return result;
@@ -1503,6 +1630,7 @@ async function failMseCapture(session: MseCaptureSession, error: string, notifyP
   }
 
   activeDownloads.delete(session.downloadKey);
+  await restoreDetachedMseCaptureTab(session);
   if (notifyPopup) {
     popupPorts.forEach((port) => {
       port.postMessage({
@@ -1555,6 +1683,7 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
     notify('Download complete', dl.filename);
     activeDownloads.delete(session.downloadKey);
     mseCaptureByTab.delete(session.tabId);
+    await restoreDetachedMseCaptureTab(session);
   } catch (error: any) {
     await failMseCapture(
       session,
