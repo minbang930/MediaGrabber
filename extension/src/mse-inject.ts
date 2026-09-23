@@ -160,6 +160,12 @@
     if (event.data.type === 'mse-capture-start') {
       const sessionId = String(event.data.sessionId || '');
       if (!sessionId) return;
+
+      if (activeCaptureSession === sessionId && !captureFinished) {
+        postToContentScript({ type: 'mse-capture-started', sessionId });
+        return;
+      }
+
       if (protectedMediaObserved) {
         postToContentScript({
           type: 'mse-capture-error',
@@ -176,6 +182,7 @@
       nextCaptureTrackId = 1;
       captureBytes = 0;
       captureFragments = 0;
+      postToContentScript({ type: 'mse-capture-started', sessionId });
       return;
     }
 
@@ -436,7 +443,10 @@
 
   document.addEventListener('ended', (event) => {
     if (event.target instanceof HTMLMediaElement) {
-      finishCapture();
+      const current = event.target.currentSrc || event.target.src;
+      if (MSE_STATE.blobUrl && current === MSE_STATE.blobUrl) {
+        finishCapture();
+      }
     }
   }, true);
 
