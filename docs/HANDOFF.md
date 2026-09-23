@@ -20,7 +20,7 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Pull/rebuild the latest `fix/mse-append-capture` extension. The CoApp capture RPC did not change in the follow-up, so reinstalling the branch CoApp is unnecessary if the previous PR #22 CoApp binary is already installed.
+1. Pull the latest `fix/mse-append-capture`, rebuild the branch CoApp, and replace the installed CoApp binary. The latest fix is in `coapp/src/mse-capture.ts`, so the previously installed PR #22 CoApp is now stale.
 2. Reload the extension and select the MSE item for the tested tab.
 3. Press Download. The tab should reload once; manual playback after reload is expected. Start from the beginning.
 4. After reload, confirm the status advances past `waiting for the reloaded player frame` to `Player frame connected` and `Capture hook armed`. Start playback; then report the last status reached (`First media fragment captured`, `Capturing…`, or later). There is no need to play the entire video if it still stops before `Capturing…`.
