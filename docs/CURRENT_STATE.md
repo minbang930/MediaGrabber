@@ -108,5 +108,5 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 - The separate direct-download test still returns HTTP 404. Does that path require a safe Referer/Origin context, another non-sensitive request property, or simply a fresher/intermediate URL?
 - The MSE append-capture path is validated on the tested transformed-XHR player, but broader compatibility remains evidence-driven; do not infer universal MSE support from this result.
-- Can Chrome `tabCapture`, held only in an offscreen extension document, preserve this player's MSE production while the browser window is fully occluded without requiring visible PiP?
+- PR #28 `tabCapture` keep-alive is now manually confirmed to preserve MSE capture while switching to another browser tab without visible PiP. Full native-window occlusion by another maximized application is still pending.
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
