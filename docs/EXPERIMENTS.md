@@ -279,6 +279,36 @@ Confirmed limitation of the current architecture:
 - seeking ahead is not considered a safe substitute because skipped intervals may never be appended.
 
 This is now a UX/performance limitation rather than a functional failure.
+## 2026-09-24 — Candidate: accelerate complete MSE capture with playbackRate
+
+Goal: reduce wall-clock capture time without changing fragment ordering or using timeline seeks.
+
+Experiment on `exp/mse-playback-rate-acceleration`:
+
+- base: validated PR #22 append-capture implementation;
+- only during an explicit active MSE capture, identify the HTMLMediaElement whose blob URL belongs to the captured MediaSource;
+- request `playbackRate = 8` and `defaultPlaybackRate = 8`;
+- do not auto-play or auto-seek;
+- report both requested and effective rates through the existing capture progress UI;
+- restore the element's original playback/defaultPlaybackRate on success, cancellation, error, or navigation.
+
+Why this is the first acceleration candidate:
+
+- chronological playback is preserved, so fMP4 fragment ordering and timestamps are not intentionally reordered;
+- the existing capture/mux pipeline remains unchanged;
+- the change is limited to the explicit download session and is reversible;
+- if the player rejects/resets the rate, the effective rate is observable rather than silently assumed.
+
+Acceptance:
+
+- ordinary playback before Download remains normal;
+- after reload and one manual Play action, popup shows an effective rate above 1×, ideally 8×;
+- capture bytes/fragments continue increasing without transport errors;
+- wall-clock completion is materially faster than media duration;
+- final output remains complete, playable, and synchronized;
+- playback rate returns to its original value after capture.
+
+If this fails, do not jump directly to arbitrary seeks. The next candidate should be coverage-aware sequential seeking, which requires fragment-time coverage tracking and likely ordered fragment indexing to avoid gaps/duplicates.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
