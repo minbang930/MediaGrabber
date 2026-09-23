@@ -19,6 +19,10 @@ class MediaDetector {
   private metadataTimer: number | undefined;
   private pageUrl = window.location.href;
   private pageGeneration = 0;
+  private mseHookReady = false;
+  private mseCaptureSessionId: string | undefined;
+  private mseCaptureSendQueue: Promise<void> = Promise.resolve();
+  private mseCaptureFinished = false;
   private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
     totalBytes: 0,
     segmentUrls: []
@@ -27,6 +31,7 @@ class MediaDetector {
   constructor() {
     this.setupNavigationListener();
     this.setupMSEListener();
+    this.checkForArmedMseCapture();
     this.setupDOMObserver();
     this.scanExistingMedia();
     this.scheduleMetadataSend();
@@ -52,6 +57,7 @@ class MediaDetector {
     this.detectedVideos = [];
     this.lastMetadataKey = '';
     this.mseState = { totalBytes: 0, segmentUrls: [] };
+    this.mseCaptureFinished = false;
     this.sendNavigation(pageUrl, this.pageGeneration);
     this.scheduleMetadataSend();
   }
@@ -85,6 +91,81 @@ class MediaDetector {
       }
 
       switch (msg.type) {
+        case 'mse-hook-ready':
+          this.mseHookReady = true;
+          this.maybeStartMseCapture();
+          break;
+
+        case 'mse-capture-chunk':
+          if (
+            this.mseCaptureSessionId &&
+            msg.sessionId === this.mseCaptureSessionId &&
+            Number.isInteger(msg.trackId) &&
+            Number.isInteger(msg.fragmentIndex) &&
+            Number.isInteger(msg.chunkIndex) &&
+            Number.isInteger(msg.chunkCount)
+          ) {
+            const bytes = msg.bytes instanceof Uint8Array
+              ? msg.bytes
+              : msg.bytes?.buffer instanceof ArrayBuffer
+                ? new Uint8Array(msg.bytes.buffer, msg.bytes.byteOffset || 0, msg.bytes.byteLength || msg.bytes.buffer.byteLength)
+                : undefined;
+            if (bytes) {
+              const base64 = this.bytesToBase64(bytes);
+              this.enqueueMseCaptureMessage({
+                type: 'MSE_CAPTURE_CHUNK',
+                sessionId: this.mseCaptureSessionId,
+                trackId: msg.trackId,
+                mime: String(msg.mime || ''),
+                fragmentIndex: msg.fragmentIndex,
+                chunkIndex: msg.chunkIndex,
+                chunkCount: msg.chunkCount,
+                base64
+              });
+            }
+          }
+          break;
+
+        case 'mse-capture-progress':
+          if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_PROGRESS',
+              sessionId: this.mseCaptureSessionId,
+              bytes: Number(msg.bytes) || 0,
+              fragments: Number(msg.fragments) || 0
+            });
+          }
+          break;
+
+        case 'mse-capture-complete':
+          if (
+            this.mseCaptureSessionId &&
+            msg.sessionId === this.mseCaptureSessionId &&
+            !this.mseCaptureFinished
+          ) {
+            this.mseCaptureFinished = true;
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_FINISH',
+              sessionId: this.mseCaptureSessionId
+            });
+          }
+          break;
+
+        case 'mse-capture-error':
+          if (
+            this.mseCaptureSessionId &&
+            msg.sessionId === this.mseCaptureSessionId &&
+            !this.mseCaptureFinished
+          ) {
+            this.mseCaptureFinished = true;
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_ERROR',
+              sessionId: this.mseCaptureSessionId,
+              error: String(msg.error || 'MSE capture failed')
+            });
+          }
+          break;
+
         case 'source-buffer':
           this.mseState.blobUrl = msg.blobUrl;
           this.mseState.mimeType = msg.mimeType;
@@ -130,6 +211,68 @@ class MediaDetector {
           break;
       }
     });
+  }
+
+  private checkForArmedMseCapture(): void {
+    try {
+      chrome.runtime.sendMessage({ type: 'MSE_CAPTURE_READY' }, (response) => {
+        void chrome.runtime.lastError;
+        if (response?.active && typeof response.sessionId === 'string') {
+          this.mseCaptureSessionId = response.sessionId;
+          this.mseCaptureFinished = false;
+          this.maybeStartMseCapture();
+        }
+      });
+    } catch {
+      // Extension context invalidated.
+    }
+  }
+
+  private maybeStartMseCapture(): void {
+    if (!this.mseHookReady || !this.mseCaptureSessionId || this.mseCaptureFinished) return;
+    window.postMessage({
+      source: 'MediaGrabber-Content',
+      type: 'mse-capture-start',
+      sessionId: this.mseCaptureSessionId
+    }, '*');
+  }
+
+  private bytesToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const stride = 0x8000;
+    for (let i = 0; i < bytes.length; i += stride) {
+      binary += String.fromCharCode(...bytes.subarray(i, Math.min(bytes.length, i + stride)));
+    }
+    return btoa(binary);
+  }
+
+  private sendMseCaptureMessage(message: any): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(message, (response) => {
+          const lastError = chrome.runtime.lastError;
+          if (lastError) {
+            reject(new Error(lastError.message));
+            return;
+          }
+          if (response?.error) {
+            reject(new Error(String(response.error)));
+            return;
+          }
+          resolve();
+        });
+      } catch (error: any) {
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
+  private enqueueMseCaptureMessage(message: any): void {
+    this.mseCaptureSendQueue = this.mseCaptureSendQueue
+      .then(() => this.sendMseCaptureMessage(message))
+      .catch((error) => {
+        console.error('[MediaGrabber] MSE capture transport failed:', error);
+      });
   }
 
   private sendMSEToBackground(): void {
