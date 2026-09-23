@@ -20,9 +20,9 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Build/load `fix/filter-image-hls` and confirm playback remains normal.
-2. Confirm the popup now shows the MSE candidate instead of the image-only HLS entry.
-3. Attempt the MSE download and record whether it produces the full video or only partial fragments; this determines the next reconstruction fix.
+1. Build/load `diag/mse-capture-state`, reload the page, and play for several seconds.
+2. Open the MSE candidate; no download attempt is required.
+3. Report the MSE quality label including the bracketed counters, for example `[b2 a53 u0 init0 injInit0 blob1]`.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
