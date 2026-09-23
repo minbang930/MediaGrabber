@@ -26,6 +26,7 @@ class MediaDetector {
     boxes: Record<string, number>;
     identityMatches: number;
     viewBufferMatches: number;
+    xhrArrayBufferResponseCount: number;
   }> = [];
   private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
     totalBytes: 0,
@@ -169,7 +170,8 @@ class MediaDetector {
           `a${buffer.appends}`,
           `box=${boxes || 'none'}`,
           `id=${buffer.identityMatches}`,
-          `view=${buffer.viewBufferMatches}`
+          `view=${buffer.viewBufferMatches}`,
+          `xhrAB=${buffer.xhrArrayBufferResponseCount || 0}`
         ].join(' ');
       })
       .join(' | ');
