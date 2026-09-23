@@ -823,6 +823,9 @@ function forEachPopupForTab(tabId: number | undefined, callback: (port: chrome.r
 }
 
 function notifyPopups(tabId: number): void {
+  const hasActiveDownload = [...activeDownloads.values()].some((download) => download.tabId === tabId);
+  if (hasActiveDownload) return;
+
   const videos = getVisibleVideosForTab(tabId);
   forEachPopupForTab(tabId, (port) => {
     port.postMessage({ type: 'MEDIA_LIST', videos });
@@ -1311,15 +1314,23 @@ function handleMseCaptureProgress(sender: chrome.runtime.MessageSender, message:
   }
 
   const bytesReceived = Math.max(0, Number(message.bytes) || 0);
+  const fragments = Math.max(0, Number(message.fragments) || 0);
   const dl = activeDownloads.get(session.downloadKey);
   if (dl) {
     dl.lastProgress = { percent: 0, bytesReceived, totalBytes: 0 };
   }
-  popupPorts.forEach((port) => {
+  forEachPopupForTab(session.tabId, (port) => {
     port.postMessage({
       type: 'DOWNLOAD_PROGRESS',
       downloadId: session.downloadKey,
-      progress: { percent: 0, bytesReceived, totalBytes: 0 }
+      progress: {
+        percent: 0,
+        bytesReceived,
+        totalBytes: 0,
+        fragments,
+        capture: true,
+        phase: 'capture'
+      }
     });
   });
   return { success: true };
@@ -1396,6 +1407,14 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
   }
 
   try {
+    forEachPopupForTab(session.tabId, (port) => {
+      port.postMessage({
+        type: 'DOWNLOAD_PROGRESS',
+        downloadId: session.downloadKey,
+        progress: { percent: 0, capture: true, phase: 'finalizing' }
+      });
+    });
+
     const captured = await nativeClient.mseCaptureFinish(session.sessionId);
     const args = buildMseMuxArgs(captured.tracks, session.outputPath);
     const result = await nativeClient.convert(args, {
