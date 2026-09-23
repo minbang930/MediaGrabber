@@ -4,7 +4,7 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Wait for PR #22's new deterministic MSE tests and Windows/Node 22 CI to pass, then perform final diff/status review and merge.
+- PR #22 deterministic MSE tests and Windows/Node 22 CI are green; perform final diff/status review and merge.
 - Keep the validated 8× playback-rate acceleration as the preferred MSE capture UX; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
