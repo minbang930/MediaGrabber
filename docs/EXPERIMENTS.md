@@ -417,6 +417,18 @@ Acceptance:
 
 Status: implementation CI passed on Windows/Node 22 (full build, CoApp tests, extension package smoke check); real-site validation pending.
 
+First PR #28 manual attempt observation:
+
+- user reported that a PiP window still appeared;
+- repository inspection of PR #28 found zero `requestPictureInPicture`, `pictureInPicture`, `enterpictureinpicture`, or `leavepictureinpicture` references in `mse-inject.ts`, `background.ts`, and the offscreen consumer;
+- therefore the source of the visible PiP is not yet confirmed. Leading possibilities are a stale previously-built PR #26/#27 bundle still loaded in the browser, or site/browser-owned PiP behavior.
+
+Diagnostic follow-up:
+
+- PR #28 now uses manifest name `MediaGrabber [tabCapture test]`, version name `1.1.1-pr28-tabcapture`, and a popup `[PR28 tabCapture]` marker;
+- rebuild after deleting `extension/dist` to rule out stale generated assets before attributing the PiP to the site/browser.
+
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
