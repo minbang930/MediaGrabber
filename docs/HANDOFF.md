@@ -20,10 +20,9 @@ The active compatibility problem is now separate: a direct-download candidate on
 
 ## Next actions
 
-1. Verify the post-merge `main` CI for `19206681b33e987a1f08ef65ffa087c6264eda4f`.
-2. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, freshness/redirect behavior, and the minimum non-sensitive request context available to the extension/CoApp.
-3. If request context is required, design the narrowest safe propagation model; do not copy cookies, authorization tokens, or broad browser headers by default.
-4. Keep MSE compatibility evidence-driven and preserve the validated player behavior/DRM boundary.
+1. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, freshness/redirect behavior, and the minimum non-sensitive request context available to the extension/CoApp.
+2. If request context is required, design the narrowest safe propagation model; do not copy cookies, authorization tokens, or broad browser headers by default.
+3. Keep MSE compatibility evidence-driven and preserve the validated player behavior/DRM boundary.
 
 ## Start here
 
