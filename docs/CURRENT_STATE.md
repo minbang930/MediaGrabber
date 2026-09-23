@@ -115,5 +115,7 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - Current UX limitation: this transport captures only media fragments the player actually appends, so complete capture presently requires the player to load the whole timeline—most reliably by playing from the beginning to the end.
 - PR #23 playback-rate acceleration passed real-site validation and has been merged into PR #22's branch. The unique-playing-video fallback successfully selected the player when exact blob matching was unavailable.
 - User validation of Cancel during accelerated capture also passed: capture stopped immediately, the player remained usable, and playback rate returned to normal.
+- Manual temporary-spool cleanup validation passed: `%TEMP%\\mediagrabber-mse-*` directory count was `0` after cancellation.
+- Deterministic MSE fragment/session tests and a Windows/Node 22 PR CI workflow have been added on PR #22; CI is currently pending.
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
