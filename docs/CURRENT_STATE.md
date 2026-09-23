@@ -100,7 +100,9 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- After image-only HLS filtering, does the real MSE candidate become the sole visible media entry while playback stays normal?
-- Can the current MSE `All Segments` path reconstruct the full video, or does it need ordered fragment concatenation/muxing?
+- PR #15 validation passed: playback remains normal and the MSE candidate is visible.
+- Closed PR #16 showed two active SourceBuffers and 50 appends but zero URLs captured by filename-based heuristics. Closed PR #17 identified normal fMP4 appends (`ftyp` then `moof`) fed by XHR. Closed PR #18 showed timing-only XHR association is too ambiguous, and closed PR #19 showed appended buffers are not the original XHR ArrayBuffers: 30 XHR ArrayBuffers become 60 MSE appends (30 audio + 30 video).
+- Branch `diag/mse-xhr-source-format` now classifies only the raw XHR response container signature to determine whether the network response itself is standard media or is transformed before MSE.
+- Once reliable source acquisition exists, does reconstruction require ordered fragment concatenation/muxing?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
