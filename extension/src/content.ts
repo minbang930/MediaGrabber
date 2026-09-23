@@ -9,6 +9,8 @@ interface DetectedMedia {
   qualities?: VideoQuality[];
   pageUrl: string;
   generation: number;
+  detectionDetail?: string;
+  detectionFrame?: 'top' | 'subframe';
 }
 
 class MediaDetector {
@@ -192,13 +194,13 @@ class MediaDetector {
           if (node instanceof Element) {
             const src = node.getAttribute('src');
             if (src && this.isMediaUrl(src)) {
-              this.handleMediaUrl(src);
+              this.handleMediaUrl(src, 'mutation:src');
             }
             // Check for source elements inside video
             const sources = node.querySelectorAll('source[src]');
             sources.forEach(source => {
               const sourceSrc = source.getAttribute('src');
-              if (sourceSrc) this.handleMediaUrl(sourceSrc);
+              if (sourceSrc) this.handleMediaUrl(sourceSrc, 'mutation:source');
             });
           }
         });
@@ -240,7 +242,7 @@ class MediaDetector {
     // Check for media source elements
     document.querySelectorAll('source[src]').forEach(source => {
       const src = source.getAttribute('src');
-      if (src) this.handleMediaUrl(src);
+      if (src) this.handleMediaUrl(src, 'scan:source');
     });
 
     // Check for iframe elements that might contain media
@@ -248,7 +250,7 @@ class MediaDetector {
       try {
         const src = iframe.getAttribute('src');
         if (src && this.isMediaUrl(src)) {
-          this.handleMediaUrl(src);
+          this.handleMediaUrl(src, 'scan:iframe');
         }
       } catch {
         // Cross-origin iframe, ignore
@@ -260,21 +262,22 @@ class MediaDetector {
    * Handle a media element (video/audio)
    */
   private handleMediaElement(el: HTMLVideoElement): void {
-    const src = el.currentSrc || el.src;
-    if (src) {
-      this.handleMediaUrl(src);
+    if (el.currentSrc) {
+      this.handleMediaUrl(el.currentSrc, 'media:currentSrc');
+    } else if (el.src) {
+      this.handleMediaUrl(el.src, 'media:src');
     }
 
     // Also check for source elements inside
     el.querySelectorAll('source[src]').forEach(source => {
       const sourceSrc = source.getAttribute('src');
-      if (sourceSrc) this.handleMediaUrl(sourceSrc);
+      if (sourceSrc) this.handleMediaUrl(sourceSrc, 'media:source');
     });
 
     // Listen for source changes
     el.addEventListener('loadedmetadata', () => {
       const currentSrc = el.currentSrc;
-      if (currentSrc) this.handleMediaUrl(currentSrc);
+      if (currentSrc) this.handleMediaUrl(currentSrc, 'media:loadedmetadata');
       this.sendPageMetadata();
     });
   }
@@ -327,7 +330,7 @@ class MediaDetector {
   /**
    * Handle a detected media URL
    */
-  private handleMediaUrl(url: string): void {
+  private handleMediaUrl(url: string, detectionDetail = 'dom:unknown'): void {
     if (this.mediaUrls.has(url)) return;
     this.mediaUrls.add(url);
 
@@ -340,7 +343,9 @@ class MediaDetector {
       type,
       url,
       pageUrl: window.location.href,
-      generation: this.pageGeneration
+      generation: this.pageGeneration,
+      detectionDetail,
+      detectionFrame: window.top === window ? 'top' : 'subframe'
     };
 
     // Send to background script
@@ -377,7 +382,9 @@ class MediaDetector {
           duration: this.getVideoDuration(),
           thumbnail: this.extractThumbnail(),
           pageUrl: media.pageUrl,
-          generation: media.generation
+          generation: media.generation,
+          detectionDetail: media.detectionDetail,
+          detectionFrame: media.detectionFrame
         }
       }, () => {
         void chrome.runtime.lastError;
