@@ -27,8 +27,8 @@ The separate direct-download HTTP 404 remains unresolved and follows this focuse
 1. CI has passed for the code change on Windows/Node 22: install, full build, CoApp tests, and extension package smoke check.
 2. Rebuild PR #28 after deleting `extension/dist`, then load the extension and verify the UI says `MediaGrabber [tabCapture test]` / `[PR28 tabCapture]`. CoApp replacement should not be needed.
 3. Manual validation has passed for another-browser-tab backgrounding: the PR #28 marker was visible, Chrome showed the tab-capture/share indicator, no MediaGrabber PiP was needed, and MSE capture continued after switching tabs.
-4. Next, fully cover the browser with another maximized application and confirm captured bytes/fragments continue increasing.
-5. Test Cancel and successful completion; confirm playback rate restores and the tab-capture state/indicator ends.
+4. Full native-window occlusion has now passed: another maximized application can completely cover the browser and MSE capture still progresses.
+5. Final manual acceptance: test Cancel and successful completion; confirm playback rate restores and the tab-capture state/indicator ends.
 6. If tabCapture does not prevent the stall, keep PR #26 real-video PiP as the known working fallback and investigate Chromium scheduling/occlusion constraints before any invasive visibility/focus spoofing.
 7. Then return to the direct-download HTTP 404 investigation.
 
