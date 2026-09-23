@@ -215,6 +215,30 @@ Follow-up on PR #22:
 - popup restore preserves and renders the stored capture phase instead of replacing it with generic download text.
 
 Status: third focused validation pending.
+## 2026-09-24 — Capture stalled before frame-ready due to stale iframe identity
+
+Third focused validation result:
+
+- last visible lifecycle phase: `Capture session ready — waiting for the reloaded player frame…`;
+- therefore no post-reload content frame was accepted by the background capture session.
+
+Confirmed code cause:
+
+- the session persisted the pre-reload MSE `sourceFrameId`;
+- `handleMseCaptureReady()` required the post-reload sender to match that old frame ID (or exact old frame URL);
+- subframe IDs are navigation-scoped and may change across reload, so the target iframe could be rejected even though its content script was running.
+
+Fix on PR #22:
+
+- post-reload content frames in the selected tab may temporarily arm as capture candidates;
+- the session no longer locks `activeFrameId` at READY time;
+- the first frame that actually delivers an MSE media chunk becomes the locked capture frame;
+- all other armed candidate frames are explicitly stopped after that first-fragment lock;
+- subsequent progress/finalization remains restricted to the locked frame.
+
+This preserves per-frame isolation without relying on stale pre-reload iframe IDs.
+
+Status: focused revalidation pending.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
