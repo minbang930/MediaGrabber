@@ -98,7 +98,8 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - Draft PR #8 (`fix/hls-extensionless-segments`) removes the prior terminal `invalid-data` failure, but FFmpeg then reports `Output file does not contain any stream`; playback remains normal.
 - Closed PR #9 classified the playlist as HLS v6 media with 1118 nonstandard-extension segments, AES-128/identity encryption, no init map, no byte ranges, no LL-HLS parts, and no I-frame-only mode.
 - Closed PR #10 observed 36 browser segment responses during normal playback: all HTTP 200, all `text/plain`, Content-Length unavailable; no key response was observed after diagnostic registration.
-- Branch `diag/hls-request-context` records only presence/absence counts for Cookie, Authorization, Range, Referer, and Origin on exact-matched browser HLS segment/key requests. Header values and URLs are not retained.
+- Closed PR #11 showed browser segment/key requests use Referer + Origin consistently, with no Cookie, Authorization, or Range. Those header classes are therefore not the missing context.
+- Branch `diag/hls-header-value-match` compares only hashed equality relationships between observed browser Referer/Origin values and the values MediaGrabber would give FFmpeg.
 
 ## Open questions
 
