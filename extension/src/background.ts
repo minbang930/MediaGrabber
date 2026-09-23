@@ -160,6 +160,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  void abortMseCaptureForTab(tabId);
   currentPageUrlByTab.set(tabId, null);
   navigationGenerationByTab.delete(tabId);
   resetTabState(tabId);
@@ -169,13 +170,27 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 const activeDownloads = new Map<string, {
   pid?: number;
   downloadId?: number;
-  type: 'convert' | 'direct' | 'ytdlp';
+  type: 'convert' | 'direct' | 'ytdlp' | 'mse-capture';
   video?: VideoInfo;
   directory: string;
   filename: string;
   tabId?: number;
+  captureSessionId?: string;
   lastProgress?: { percent: number; speed?: string; bytesReceived?: number; totalBytes?: number; eta?: number };
 }>();
+
+interface MseCaptureSession {
+  sessionId: string;
+  downloadKey: string;
+  tabId: number;
+  sourceFrameId?: number;
+  sourceFrameUrl?: string;
+  activeFrameId?: number;
+  outputPath: string;
+  finalizing: boolean;
+}
+
+const mseCaptureByTab = new Map<number, MseCaptureSession>();
 
 // Popup connections
 const popupPorts = new Set<chrome.runtime.Port>();
@@ -217,7 +232,7 @@ nativeClient.listen({
   convertOutput: (progressTime: number, currentSeconds: number, info: any) => {
     for (const [key, dl] of activeDownloads) {
       if (!dl.video) continue;
-      if (dl.type !== 'convert' && dl.type !== 'ytdlp') continue;
+      if (dl.type !== 'convert' && dl.type !== 'ytdlp' && dl.type !== 'mse-capture') continue;
       const duration = dl.video.duration || 0;
       const percent = info?.percent != null
         ? Math.min(100, info.percent)
@@ -236,14 +251,14 @@ nativeClient.listen({
   // CoApp tells us the ffmpeg PID for a convert operation
   convertStartNotification: (startHandler: any, pid: number) => {
     const keyedDownload = activeDownloads.get(String(startHandler));
-    if (keyedDownload && keyedDownload.type === 'convert') {
+    if (keyedDownload && (keyedDownload.type === 'convert' || keyedDownload.type === 'mse-capture')) {
       keyedDownload.pid = pid;
       return;
     }
 
     // Fallback for older CoApp calls without startHandler.
     for (const dl of activeDownloads.values()) {
-      if (dl.type === 'convert' && dl.pid === undefined) {
+      if ((dl.type === 'convert' || dl.type === 'mse-capture') && dl.pid === undefined) {
         dl.pid = pid;
         break;
       }
