@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <strong>Download videos from any website. Pick your quality. No surprises.</strong>
+  <strong>Download supported non-DRM web video streams. Pick your quality. Keep the workflow inspectable.</strong>
 </p>
 
 <p align="center">
@@ -22,13 +22,13 @@
 
 https://github.com/user-attachments/assets/05a171ad-6ba6-4ab1-8d7c-9ef7cbdec57d
 
-A browser extension that catches video streams as they pass through the browser and lets you download them in whatever quality you want. Think Video DownloadHelper, but modern, open source, and built for Manifest V3.
+A browser extension that observes common video delivery paths and lets you download supported non-DRM media in available qualities. Think Video DownloadHelper, but open source and built for Manifest V3.
 
-Why another downloader? Because the ones that work either haven't been updated in years, come with sketchy installers, or hide quality selection behind a paywall. MediaGrabber does the one thing you actually need — grab the video, give you a quality picker, and get out of your way.
+Why another downloader? MediaGrabber is intended to make stream detection, quality selection, and native download handling inspectable and modifiable. Website compatibility varies by transport, request context, and player behavior; DRM circumvention is not a project goal.
 
 ### What it does
 
-- **Detects everything.** HLS streams (.m3u8), DASH manifests (.mpd), direct MP4/WebM files, and even MSE-blobbed video that regular downloaders miss.
+- **Detects common web media delivery patterns.** HLS streams (.m3u8), DASH manifests (.mpd), direct MP4/WebM files, and MSE/blob-based media where the current hooks are compatible.
 - **Quality selection that actually works.** Pick from every variant in the manifest — 240p through 4K. Separate entries for audio tracks and subtitles when the stream offers them.
 - **YouTube support.** Full quality selection via yt-dlp integration. No, not just 360p and 720p. Everything the video was uploaded in.
 - **Progress you can see.** Badge counter on the icon, download progress in the popup, optional desktop notifications.
