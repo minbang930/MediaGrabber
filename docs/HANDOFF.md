@@ -14,7 +14,7 @@ Last updated: 2026-09-23
 
 ## Current focus
 
-The immediate engineering problem is the tested site where stock mse-inject.js prevents video playback. PR #3 merged as `f1b73b9181fb40add46e7f12c10a844972f9c9d9`. User manual validation confirmed normal playback on the previously broken site. Branch `fix/group-mse-fragments` now adds explicit MSE segment ownership so matching raw MP4/WebM/direct detections can be suppressed. Removing the injector entirely remains diagnostic only because that exposes many fragment-like entries and partial downloads.
+The immediate engineering problem is the tested site where stock mse-inject.js prevents video playback. PR #3 merged as `f1b73b9181fb40add46e7f12c10a844972f9c9d9`. User manual validation confirmed normal playback on the previously broken site. Draft PR #4 (`fix/group-mse-fragments`) now adds explicit MSE segment ownership so matching raw MP4/WebM/direct detections can be suppressed. Removing the injector entirely remains diagnostic only because that exposes many fragment-like entries and partial downloads.
 
 A separate direct-download test currently fails with HTTP 404.
 
