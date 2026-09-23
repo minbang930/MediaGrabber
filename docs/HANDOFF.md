@@ -14,15 +14,15 @@ Last updated: 2026-09-23
 
 ## Current focus
 
-The immediate engineering problem is the tested site where stock mse-inject.js prevents video playback. PR #3 (`fix/minimize-xhr-hook`) removes the invasive XMLHttpRequest constructor/event-property wrapping while keeping MSE observation. User manual validation confirmed normal playback on the previously broken site. Removing the injector entirely remains diagnostic only because that exposes many fragment-like entries and partial downloads.
+The immediate engineering problem is the tested site where stock mse-inject.js prevents video playback. PR #3 merged as `f1b73b9181fb40add46e7f12c10a844972f9c9d9`. User manual validation confirmed normal playback on the previously broken site. Branch `fix/group-mse-fragments` now adds explicit MSE segment ownership so matching raw MP4/WebM/direct detections can be suppressed. Removing the injector entirely remains diagnostic only because that exposes many fragment-like entries and partial downloads.
 
 A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Merge PR #3 after final status review; its playback acceptance criterion passed.
-2. Inspect why the popup still exposes roughly 14 media entries on the tested site.
-3. Validate or rework fragment grouping/MSE reconstruction so a full stream is represented and downloaded rather than individual segments.
+1. Build/load `fix/group-mse-fragments` and re-test the same site.
+2. Record the popup entry count after several seconds of playback; expected result is that MSE-owned raw fragment entries disappear.
+3. If grouping succeeds, inspect the remaining MSE entry and fix full-stream reconstruction/download rather than individual-segment saving.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
