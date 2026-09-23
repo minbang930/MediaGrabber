@@ -20,10 +20,9 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Wait for the new PR #22 CI workflow to finish and inspect any failed job/step logs.
-2. If CI is green, review the complete PR #22 diff/status, mark ready, and merge to `main`.
-3. Verify latest `main` and CI after merge.
-4. Return to the separate direct-download HTTP 404 and determine the minimal safe request context required.
+1. Review PR #22's complete diff/status and merge to `main` if clean; the new Windows/Node 22 CI is green.
+2. Verify latest `main` and the post-merge CI run.
+3. Return to the separate direct-download HTTP 404 and determine the minimal safe request context required.
 
 ## Start here
 
