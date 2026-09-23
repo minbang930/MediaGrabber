@@ -146,7 +146,11 @@ Experiment on branch `fix/hls-extensionless-segments`:
 - for rewritten temporary local manifests, additionally allow `file` because the CoApp materializes the manifest on disk;
 - do not relax the extension policy for DASH/direct/yt-dlp paths.
 
-Status: implementation complete on the branch, real-site validation pending.
+Result so far: playback remains normal and the previous `invalid-data` failure is no longer the terminal error. FFmpeg now reaches output creation but reports `Output file does not contain any stream` and fails to create the MP4. This is evidence that the extension-relaxation change passed the earlier extension check, but it does not yet prove that the selected HLS playlist contains a usable audio/video stream.
+
+Follow-up diagnostic branch: `diag/hls-no-stream`.
+
+It reports only manifest structure, not URLs or keys: segment extension classes, `EXT-X-MAP`, byte ranges, LL-HLS parts/preload hints, I-frame-only mode, end-list/version, coarse encryption method/key-format class, and coarse FFmpeg warning flags. This is specifically intended to distinguish ordinary A/V HLS from subtitle/image playlists, fragmented-MP4 structure, and protected `SAMPLE-AES`-style media before making another download-path change.
 
 ## Candidate reconstruction issue
 
