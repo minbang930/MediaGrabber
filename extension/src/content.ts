@@ -163,6 +163,17 @@ class MediaDetector {
           }
           break;
 
+        case 'mse-capture-pip':
+          if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_PIP',
+              sessionId: this.mseCaptureSessionId,
+              state: String(msg.state || 'unknown'),
+              detail: String(msg.detail || '')
+            });
+          }
+          break;
+
         case 'mse-capture-progress':
           if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
             this.enqueueMseCaptureMessage({
