@@ -103,10 +103,19 @@ class MediaDetector {
 
         case 'mse-capture-started':
           if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
+            const firstAck = !this.mseCaptureStarted;
             this.mseCaptureStarted = true;
             if (this.mseCaptureStartTimer !== undefined) {
               clearTimeout(this.mseCaptureStartTimer);
               this.mseCaptureStartTimer = undefined;
+            }
+            if (firstAck) {
+              try {
+                chrome.runtime.sendMessage({
+                  type: 'MSE_CAPTURE_STARTED',
+                  sessionId: this.mseCaptureSessionId
+                }, () => { void chrome.runtime.lastError; });
+              } catch {}
             }
           }
           break;
