@@ -1394,6 +1394,12 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
       throw new Error(formatFfmpegError(result.exitCode, result.stderr));
     }
 
+    try {
+      await nativeClient.mseCaptureCleanup(session.sessionId);
+    } catch {
+      // The output file is already complete; temp cleanup is best-effort.
+    }
+
     popupPorts.forEach((port) => {
       port.postMessage({
         type: 'DOWNLOAD_COMPLETE',
@@ -1404,7 +1410,6 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
     notify('Download complete', dl.filename);
     activeDownloads.delete(session.downloadKey);
     mseCaptureByTab.delete(session.tabId);
-    await nativeClient.mseCaptureCleanup(session.sessionId);
   } catch (error: any) {
     await failMseCapture(
       session,
