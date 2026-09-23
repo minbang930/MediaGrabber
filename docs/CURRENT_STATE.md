@@ -96,7 +96,8 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - User manual validation confirmed the DOM source-noise fix reduced the popup from 14 entries to 1.
 - Closed PRs #8-#14 established that the remaining visible HLS was the wrong candidate: its 1118 segments are images, FFmpeg probed the decrypted child as `image2`, and a hidden `mse` candidate was present.
 - PR #8's `extension_picky` change was closed without merge because it was tuning an image playlist rather than the main video.
-- Branch `fix/filter-image-hls` filters image-only HLS media playlists so the MSE candidate can surface.
+- PR #15 merged the image-only HLS filter; user validation confirmed playback remained normal and the MSE candidate surfaced.
+- The current append-capture branch changes both the extension and CoApp; testing it requires the branch CoApp binary, not the previously installed release binary.
 
 ## Open questions
 
