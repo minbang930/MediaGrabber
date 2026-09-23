@@ -333,6 +333,14 @@ function getMediaTypeFromContentType(contentType: string): VideoInfo['type'] | u
   return undefined;
 }
 
+function getUrlScheme(url: string): string {
+  try {
+    return new URL(url).protocol.replace(/:$/, '') || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function getRequestReferer(initiator?: string): string | undefined {
   if (!initiator || initiator === 'null') return undefined;
   try {
@@ -705,7 +713,8 @@ async function handleInterceptedMedia(
     duration: duration || metadata?.duration,
     thumbnail: metadata?.thumbnail,
     fileSize,
-    detectionSource
+    detectionSource,
+    detectionScheme: getUrlScheme(url)
   });
 
   console.log('[MediaGrabber] Intercepted media:', url, type);
@@ -1207,7 +1216,8 @@ function handleVideoDetected(tabId: number | undefined, video: VideoInfo, frameI
   }
   upsertVideo(tabId, {
     ...video,
-    detectionSource: video.detectionSource || (video.type === 'mse' ? 'content:mse' : 'content:dom')
+    detectionSource: video.detectionSource || (video.type === 'mse' ? 'content:mse' : 'content:dom'),
+    detectionScheme: video.detectionScheme || getUrlScheme(video.url)
   });
   console.log(`[MediaGrabber] Detected video on tab ${tabId}:`, video.title);
   return { success: true, count: (mediaByTab.get(tabId) || []).length };
