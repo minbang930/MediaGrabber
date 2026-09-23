@@ -11,7 +11,7 @@ Last reviewed: 2026-09-24
 - Upstream main was at the same SHA when checked on 2026-09-23.
 - Package and manifest version: 1.1.1.
 - No open PRs existed in the fork at bootstrap time.
-- Current `main`: `a235da338e596986c2bca92bbe85d705faa5fabc` (PR #24 docs handoff after the PR #22 MSE capture merge).
+- Current `main` after PR #28: `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
 
 ## Implemented runtime
 
@@ -27,7 +27,7 @@ Last reviewed: 2026-09-24
 - HLS audio/subtitle handling and DASH subtitle handling.
 - DOM scanning for media/source elements.
 - MSE/blob state tracking via window.postMessage.
-- Explicit user-triggered clear MSE append capture for transformed-XHR players, with per-SourceBuffer fMP4 capture, bounded transport, chronological playback acceleration up to 8×, cancellation/restoration, and DRM/EME guards.
+- Explicit user-triggered clear MSE append capture for transformed-XHR players, with per-SourceBuffer fMP4 capture, bounded transport, chronological playback acceleration up to 8×, cancellation/restoration, DRM/EME guards, and a video-only `tabCapture`/offscreen keep-alive for background/occluded capture on supported Chromium versions.
 - Popup/settings UI and download progress state.
 - yt-dlp-backed format route for YouTube pages.
 
@@ -57,7 +57,8 @@ Last reviewed: 2026-09-24
 - There is still no lint script.
 - The tag-triggered Windows release workflow remains separate.
 - npm run dev:extension is currently broken because extension/package.json has no watch script.
-- PR #22 CI and the post-merge `main` CI both passed on Windows/Node 22: dependency install, full extension/CoApp build, deterministic CoApp tests, and extension package smoke check succeeded.
+- PR #22 CI and its post-merge `main` CI passed on Windows/Node 22.
+- PR #28 final PR CI passed on Windows/Node 22: dependency install, full extension/CoApp build, deterministic CoApp tests, and extension package smoke check succeeded. Post-merge `main` CI status should be checked separately.
 
 ## Known compatibility findings
 
