@@ -100,7 +100,9 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- After image-only HLS filtering, does the real MSE candidate become the sole visible media entry while playback stays normal?
-- Can the current MSE `All Segments` path reconstruct the full video, or does it need ordered fragment concatenation/muxing?
+- PR #15 validation passed: playback remains normal and the MSE candidate is visible.
+- Closed PR #16 measured `[b2 a50 u0 init0 injInit0 blob1]`: two SourceBuffers received 50 appends but filename-based fetch/XHR heuristics captured zero segment URLs.
+- Closed PR #17 showed both buffers are normal fragmented MP4 (`ftyp` then `moof`), and every append has a recent XHR resource, but Resource Timing body sizes do not match append sizes. Branch `diag/mse-xhr-timing` now measures timing proximity/ambiguity only.
+- Once reliable per-buffer segment acquisition exists, does reconstruction require ordered fragment concatenation/muxing?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
