@@ -14,33 +14,36 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #15 surfaced the real MSE candidate while preserving playback. Diagnostics #16-#21 then showed that this player transforms opaque XHR data into separate clear audio/video fMP4 SourceBuffers, with no reliable URL replay path and no observed EME/CENC protection. Draft PR #22 (`fix/mse-append-capture`) implements an explicit user-triggered reload/capture/native-spool/mux workflow. First real-site validation confirmed the one-time reload but did not finalize an output; it also exposed a cross-tab popup broadcast bug. User validation confirmed tab scoping. Lifecycle instrumentation then showed the capture stalled at `reload`, before `frame-ready`. The cause was stale pre-reload iframe identity. PR #22 now treats post-reload frames in the selected tab as temporary candidates and locks capture to the first frame that actually emits an MSE media fragment. After fixing the native sparse-array spool bug, user validation succeeded end-to-end: reload, manual playback, fragment capture, mux, and final file creation all worked. The remaining UX limitation is that complete capture depends on the player appending the whole timeline. PR #23 playback-rate acceleration passed real-site validation and has been merged into PR #22's branch: 8× playback engaged during capture, download completed, and the final video was normal. Chronological playback-rate acceleration is now the preferred UX improvement over seek-based acceleration for this transport.
+PR #22 merged to `main` as `19206681b33e987a1f08ef65ffa087c6264eda4f`. The tested transformed-XHR MSE path now has an explicit clear-fMP4 capture workflow: one reload, post-transform SourceBuffer capture, native ordered per-track spooling, FFmpeg muxing, up to 8× chronological playback acceleration, cancellation/rate restoration, EME/CENC guards, deterministic fragment/session tests, and PR/main CI. User validation passed end-to-end, including output correctness and temporary-file cleanup.
 
-A separate direct-download test currently fails with HTTP 404.
+The active compatibility problem is now separate: a direct-download candidate on another tested site returns HTTP 404. The exact cause remains unproven. Current code does not pass saved request context on the direct-download path even though the CoApp downloader supports caller-provided headers; treat that as a hypothesis to test narrowly, not as the established root cause.
 
 ## Next actions
 
-1. Review PR #22's complete diff/status and merge to `main` if clean; the new Windows/Node 22 CI is green.
-2. Verify latest `main` and the post-merge CI run.
-3. Return to the separate direct-download HTTP 404 and determine the minimal safe request context required.
+1. Verify the post-merge `main` CI for `19206681b33e987a1f08ef65ffa087c6264eda4f`.
+2. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, freshness/redirect behavior, and the minimum non-sensitive request context available to the extension/CoApp.
+3. If request context is required, design the narrowest safe propagation model; do not copy cookies, authorization tokens, or broad browser headers by default.
+4. Keep MSE compatibility evidence-driven and preserve the validated player behavior/DRM boundary.
 
 ## Start here
 
 Read:
 
-- extension/src/mse-inject.ts
-- extension/src/content.ts
-- extension/src/background.ts around startDownload(), HLS rewriting, and direct download
-- coapp/src/mse-capture.ts
-- coapp/src/converter.ts
-- docs/EXPERIMENTS.md
+- extension/src/background.ts around `startDownload()`, direct-download routing, and detected-video metadata;
+- extension/src/lib/types.ts;
+- coapp/src/downloads.ts;
+- coapp/src/native-messaging.ts / RPC boundary;
+- docs/EXPERIMENTS.md, especially the direct HTTP 404 entry;
+- docs/DECISIONS.md for request-context and MSE constraints.
 
 Verification baseline:
 
     npm ci
     npm run build
+    npm run test:coapp
+    npm run package:extension
 
-Manual browser playback/download verification still requires the user's local site test. The agent environment could not clone from GitHub for a full build because outbound DNS was unavailable; the changed XHR hook itself passed a standalone TypeScript DOM type-check.
+Browser/player compatibility still requires user manual integration testing. GitHub Actions now provides the standard Windows/Node 22 build/test/package baseline.
 
 ## Do not repeat as a fix
 
