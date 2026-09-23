@@ -28,7 +28,7 @@ Network-facing detection includes:
 Download routing is type-based:
 
 - HLS/DASH → FFmpeg through CoApp;
-- MSE → FFmpeg through CoApp using captured URLs/arguments;
+- MSE → explicit user-triggered post-transform capture on `fix/mse-append-capture`: clear SourceBuffer appends are chunked through the extension, spooled to temporary per-track files in CoApp, then muxed by FFmpeg;
 - yt-dlp entries → yt-dlp through CoApp;
 - direct media → CoApp HTTP downloader.
 
