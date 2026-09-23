@@ -1,0 +1,98 @@
+# Current State
+
+Last reviewed: 2026-09-23
+
+## Repository state
+
+- Working repository: minbang930/MediaGrabber.
+- Repository type: fork of miroshArtem/MediaGrabber.
+- Default branch: main.
+- Baseline main at workspace bootstrap: daf968e2f9ad853b318a10196f0e21c586798db5.
+- Upstream main was at the same SHA when checked on 2026-09-23.
+- Package and manifest version: 1.1.1.
+- No open PRs existed in the fork at bootstrap time.
+
+## Implemented runtime
+
+### Browser extension
+
+- Chrome/Edge Manifest V3.
+- Service worker: extension/src/background.ts.
+- Isolated-world content script: extension/src/content.ts.
+- MAIN-world hook: extension/src/mse-inject.ts.
+- Network detection through chrome.webRequest.
+- Direct URL recognition for HTTP(S) MP4/WebM.
+- HLS (.m3u8) and DASH (.mpd) detection and manifest parsing.
+- HLS audio/subtitle handling and DASH subtitle handling.
+- DOM scanning for media/source elements.
+- MSE/blob state tracking via window.postMessage.
+- Popup/settings UI and download progress state.
+- yt-dlp-backed format route for YouTube pages.
+
+### Native companion
+
+- Native messaging host: com.mediagrabber.coapp.
+- Length-prefixed JSON RPC over stdin/stdout.
+- Direct HTTP(S) downloader.
+- FFmpeg conversion/remux path and ffprobe probing.
+- yt-dlp format discovery and downloads.
+- User-local installer and native messaging registration.
+- Runtime lookup for FFmpeg, ffprobe, and yt-dlp.
+
+### Release pipeline
+
+- .github/workflows/release.yml runs only on v* tags.
+- Current release job is Windows-only.
+- CI uses Node 22.x.
+- Windows release pins an FFmpeg 8.1.2 asset and yt-dlp 2026.07.04.
+- Installer downloads runtime binaries over HTTPS and verifies configured SHA-256 hashes.
+
+## Build and verification state
+
+- There is no automated test suite.
+- There is no lint script.
+- There is no PR or push CI workflow; only the tag-triggered release workflow exists.
+- README and the previous agent notes define a successful npm run build as the current local verification baseline.
+- npm run dev:extension is currently broken because extension/package.json has no watch script.
+
+## Known compatibility findings
+
+Details and observations are in EXPERIMENTS.md.
+
+1. Native host installation works after the separate setup executable is installed. Installing only the extension produced "Specified native messaging host not found"; after the setup executable ran, that error disappeared.
+2. MAIN-world instrumentation can break playback on at least one tested site. With the stock mse-inject.js content script enabled, the site's video did not play. Removing that MAIN-world content-script entry restored playback.
+3. Removing the MSE injector is not a viable final fix. After removal, the extension exposed roughly 14 media-looking entries on the same site, and downloads appeared to contain only individual or partial segments rather than the full video.
+4. A separate tested site returns "Download failed with HTTP 404" on direct download. The exact server-side cause is not yet proven.
+5. The code currently sends no saved request headers in the direct-download call. startDownload() passes URL, directory, and filename to downloads.download; the CoApp supports custom headers, but the extension does not currently provide them on that path. This is a plausible compatibility gap for referer/origin/auth-sensitive URLs, not yet a proven cause of the observed 404.
+6. MSE "All Segments" assembly needs validation. content.ts currently constructs FFmpeg arguments as multiple independent -i inputs followed by -c copy. It is not yet verified that this reconstructs common fragmented MP4 sequences correctly; treat this as a candidate defect until tested.
+7. Some FFmpeg compatibility errors surfaced to users are currently Russian-language strings in background.ts.
+
+## MSE hook risk area
+
+extension/src/mse-inject.ts currently modifies several page-global APIs, including:
+
+- history.pushState and replaceState;
+- window.XMLHttpRequest constructor property;
+- per-instance XHR onload, onreadystatechange, and onloadend properties;
+- XMLHttpRequest.prototype.open;
+- window.fetch;
+- URL.createObjectURL;
+- MediaSource.prototype.addSourceBuffer;
+- SourceBuffer.prototype.appendBuffer;
+- MediaSource.prototype.duration.
+
+The strongest current compatibility hypothesis is that XHR wrapping is too invasive for some players. This is a hypothesis, not yet a code-level root-cause proof.
+
+## Documentation state
+
+- Uppercase project documents are the long-term current-state documentation.
+- Existing lowercase files such as docs/architecture.md, docs/detection.md, docs/coapp.md, and docs/changelog.md are inherited Video DownloadHelper research/reference documents. They are useful background but are not authoritative descriptions of the current MediaGrabber implementation.
+- The previous AGENTS.md contained stale references to agent-plan/ and installer/, which are not present in the current repository tree. The workspace bootstrap removes those stale layout assumptions.
+
+## Open questions
+
+- Which exact part of the XHR/MSE hook breaks the tested player?
+- What transport pattern produces the roughly 14 detected fragment entries when MAIN-world MSE hooking is disabled?
+- Does that site expose a recoverable HLS/DASH manifest, or does it require reliable MSE fragment reconstruction?
+- Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
+- Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
