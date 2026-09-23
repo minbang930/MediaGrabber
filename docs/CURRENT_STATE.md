@@ -100,7 +100,8 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- After image-only HLS filtering, does the real MSE candidate become the sole visible media entry while playback stays normal?
-- Can the current MSE `All Segments` path reconstruct the full video, or does it need ordered fragment concatenation/muxing?
+- User validation after PR #15: playback remains normal and the MSE candidate is visible, but the popup shows only `MSE Stream`; `All Segments` is absent. Downloading that lone option fails with the generic FFmpeg-open error.
+- Does the MSE injector observe appended bytes while failing to capture usable segment URLs/init state, or are URLs captured but the explicit-init handoff incomplete?
+- Once usable per-buffer segment data exists, does reconstruction require ordered fragment concatenation/muxing?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
