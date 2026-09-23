@@ -142,7 +142,7 @@
         element instanceof HTMLVideoElement &&
         !element.paused &&
         !element.ended &&
-        element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+        element.readyState >= 2
       );
       if (playingVideos.length === 1) {
         media = playingVideos[0];
@@ -154,7 +154,7 @@
       const playingMedia = allMedia.filter((element) =>
         !element.paused &&
         !element.ended &&
-        element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+        element.readyState >= 2
       );
       if (playingMedia.length === 1) {
         media = playingMedia[0];
