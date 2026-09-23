@@ -626,8 +626,11 @@ function restoreDownloadUI(downloadId: string, filename: string, progress: any):
     filenameEl.textContent = filename;
   }
 
-  updateProgressUI(progress || { percent: 0 });
-  updateStatus('Downloading…', 'info');
+  const restoredProgress = progress || { percent: 0 };
+  updateProgressUI(restoredProgress);
+  if (!restoredProgress?.capture) {
+    updateStatus('Downloading…', 'info');
+  }
   document.getElementById('cancel-btn')?.focus();
 }
 
@@ -635,7 +638,7 @@ function showDownloadStarted(downloadId: string, capture = false): void {
   currentDownloadId = downloadId;
   updateStatus(
     capture
-      ? 'Capture armed — the page will reload. Play the video from the beginning until it finishes.'
+      ? 'Capture session created — reloading page…'
       : 'Download started…',
     'info'
   );
@@ -647,14 +650,32 @@ function updateProgressUI(progress: any): void {
   const speedEl = document.getElementById('progress-speed');
   const etaEl = document.getElementById('progress-eta');
 
-  if (progress?.capture && progress?.phase === 'capture') {
-    const captured = typeof progress.bytesReceived === 'number' && progress.bytesReceived > 0
-      ? formatFileSize(progress.bytesReceived)
-      : '0 B';
-    const fragments = typeof progress.fragments === 'number' ? progress.fragments : 0;
-    updateStatus(`Capturing… ${captured} · ${fragments} fragments`, 'info');
-  } else if (progress?.capture && progress?.phase === 'finalizing') {
-    updateStatus('Capture complete — finalizing MP4…', 'info');
+  if (progress?.capture) {
+    switch (progress.phase) {
+      case 'reload':
+        updateStatus('Capture session ready — waiting for the reloaded player frame…', 'info');
+        break;
+      case 'frame-ready':
+        updateStatus('Player frame connected — waiting for the MAIN-world capture hook…', 'info');
+        break;
+      case 'hook-armed':
+        updateStatus('Capture hook armed — start playback from the beginning.', 'info');
+        break;
+      case 'first-fragment':
+        updateStatus('First media fragment captured — capture is active.', 'info');
+        break;
+      case 'capture': {
+        const captured = typeof progress.bytesReceived === 'number' && progress.bytesReceived > 0
+          ? formatFileSize(progress.bytesReceived)
+          : '0 B';
+        const fragments = typeof progress.fragments === 'number' ? progress.fragments : 0;
+        updateStatus(`Capturing… ${captured} · ${fragments} fragments`, 'info');
+        break;
+      }
+      case 'finalizing':
+        updateStatus('Capture complete — finalizing MP4…', 'info');
+        break;
+    }
   }
 
   if (speedEl) speedEl.textContent = '';
@@ -676,7 +697,10 @@ function updateProgressUI(progress: any): void {
       fill.classList.add('indeterminate');
       fill.style.width = '35%';
       fill.removeAttribute('aria-valuenow');
-      fill.setAttribute('aria-valuetext', 'Downloading…');
+      fill.setAttribute(
+        'aria-valuetext',
+        progress?.capture ? 'Capturing media…' : 'Downloading…'
+      );
     }
   }
 
