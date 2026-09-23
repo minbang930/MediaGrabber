@@ -42,6 +42,7 @@
   let originalDefaultPlaybackRate = 1;
   let accelerationRetryTimer: number | undefined;
   let accelerationRetryAttempts = 0;
+  let accelerationTargetMode: 'blob' | 'playing-video' | 'playing-media' | null = null;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -100,7 +101,8 @@
       type: 'mse-capture-acceleration',
       sessionId: activeCaptureSession,
       requestedRate: CAPTURE_PLAYBACK_RATE,
-      effectiveRate: Number(element.playbackRate) || 1
+      effectiveRate: Number(element.playbackRate) || 1,
+      targetMode: accelerationTargetMode || 'unknown'
     });
   }
 
@@ -108,6 +110,7 @@
     clearAccelerationRetry();
     const element = acceleratedMediaElement;
     acceleratedMediaElement = null;
+    accelerationTargetMode = null;
     if (!element) return;
     try {
       element.defaultPlaybackRate = originalDefaultPlaybackRate;
@@ -130,11 +133,39 @@
       }
     }
 
-    const media = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'))
-      .find((element) => isCapturedMediaElement(element));
-    if (!media) return false;
+    const allMedia = Array.from(document.querySelectorAll<HTMLMediaElement>('video, audio'));
+    let media = allMedia.find((element) => isCapturedMediaElement(element));
+    let targetMode: 'blob' | 'playing-video' | 'playing-media' | null = media ? 'blob' : null;
+
+    if (!media && captureFragments > 0) {
+      const playingVideos = allMedia.filter((element) =>
+        element instanceof HTMLVideoElement &&
+        !element.paused &&
+        !element.ended &&
+        element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      );
+      if (playingVideos.length === 1) {
+        media = playingVideos[0];
+        targetMode = 'playing-video';
+      }
+    }
+
+    if (!media && captureFragments > 0) {
+      const playingMedia = allMedia.filter((element) =>
+        !element.paused &&
+        !element.ended &&
+        element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+      );
+      if (playingMedia.length === 1) {
+        media = playingMedia[0];
+        targetMode = 'playing-media';
+      }
+    }
+
+    if (!media || !targetMode) return false;
 
     acceleratedMediaElement = media;
+    accelerationTargetMode = targetMode;
     originalPlaybackRate = media.playbackRate;
     originalDefaultPlaybackRate = media.defaultPlaybackRate;
     try {
@@ -145,6 +176,7 @@
       return true;
     } catch {
       acceleratedMediaElement = null;
+      accelerationTargetMode = null;
       return false;
     }
   }
@@ -550,6 +582,10 @@
 
       captureBytes += capturePayload.bytes;
       captureFragments++;
+      if (captureFragments === 1) {
+        accelerationRetryAttempts = 0;
+        scheduleCaptureAcceleration();
+      }
       postCaptureFragment(
         capturePayload.sessionId,
         capturePayload.trackId,
