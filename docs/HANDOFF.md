@@ -14,27 +14,36 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #28 (`fix: keep MSE capture active while occluded`) merged to `main` as `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
+The direct-download HTTP 404 is temporarily deprioritized because a broader browser-compatibility regression is now confirmed on current `main`.
 
-The validated transformed-XHR MSE flow is now:
+User-reported A/B evidence:
 
-- explicit clear `SourceBuffer.appendBuffer()` capture after user-triggered Download/reload;
-- native ordered per-track spooling and FFmpeg mux;
-- chronological playback acceleration up to 8× with restoration on exit;
-- video-only Chrome `tabCapture` consumed in a hidden offscreen extension document so capture continues in background tabs and while another maximized application fully occludes the browser;
-- no visible MediaGrabber PiP requirement;
-- success/Cancel both stop the browser capture indicator/stream; Cancel restores playback rate and leaves the player usable;
-- protected EME/CENC media remains out of scope.
+- Cloudflare human-verification can remain stuck/loading with MediaGrabber enabled;
+- `databento.com` can fail to load with the extension enabled;
+- disabling MediaGrabber restores normal access;
+- YouTube thumbnails can initially be missing and later reappear.
 
-The superseded real-video PiP PR #26 and helper-PiP PR #27 are closed without merge.
+Current `main` injects `mse-inject.js` into every URL/frame at `document_start` in MAIN world, where it replaces multiple page-visible native APIs. This violates the playback/browser-preservation goal beyond media sites.
 
-The active compatibility problem is again the separate direct-download HTTP 404. Its exact cause remains unproven. Current direct downloads still do not propagate saved browser request context even though the CoApp supports caller-provided headers; treat request-context propagation as a hypothesis to test narrowly, not as the root cause.
+Active branch: `fix/lazy-mse-main-hook`.
+
+Candidate implementation:
+
+- remove static MAIN-world MSE injection;
+- detect `blob:` video as an MSE candidate from the isolated content script;
+- dynamically register the MAIN MSE hook only when the user starts an MSE capture, scoped to the relevant HTTP(S) player/page origins and future reload documents;
+- unregister the hook at capture teardown;
+- remove History/fetch/XHR wrappers from the MSE hook;
+- replace same-document History wrapping with isolated-world Navigation API observation;
+- preserve HTTP redirect relay learning through `webRequest.onBeforeRedirect`.
 
 ## Next actions
 
-1. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, URL freshness/redirect behavior, and whether the detected URL is intermediate/non-download.
-2. Only if needed, determine the minimum non-sensitive request context required; do not copy cookies, authorization tokens, or broad browser headers by default.
-3. Preserve the validated MSE player behavior, tabCapture privacy boundary, and DRM boundary while making unrelated compatibility changes.
+1. Let CI validate `fix/lazy-mse-main-hook`.
+2. Manual A/B with the compatibility-test build: Cloudflare challenge, `databento.com`, and YouTube thumbnail loading.
+3. Revalidate the previously working transformed-XHR MSE site: candidate visibility, Download/reload, 8× append capture, background/occlusion keep-alive, successful output, and Cancel teardown.
+4. If both compatibility and MSE regression tests pass, remove the temporary `[compat test]` / version marker, update architecture/decision docs, run final CI, and merge.
+5. Only after this compatibility issue is closed, return to the separate direct-download HTTP 404.
 
 ## Start here
 
