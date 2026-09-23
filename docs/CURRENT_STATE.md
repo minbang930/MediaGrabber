@@ -103,7 +103,7 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- Does the HLS candidate succeed when extension matching is relaxed only for HLS inputs under a constrained protocol whitelist?
-- If not, what HLS tag or segment format causes FFmpeg's `invalid-data` result despite successful browser-side playlist parsing?
+- Which child demuxer format does FFmpeg probe after AES-128 decryption of the nonstandard-extension segments?
+- If FFmpeg probes a valid media format but still reports zero streams, which segment-demuxer/probing option is insufficient?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
