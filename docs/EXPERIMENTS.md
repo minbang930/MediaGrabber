@@ -142,6 +142,36 @@ Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excl
 
 Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
 
+## 2026-09-24 — Transformed MSE path is clear; implement append capture
+
+Diagnostic sequence after the real MSE candidate was surfaced:
+
+- capture-state diagnostic: two SourceBuffers, active appends, zero URL capture;
+- container diagnostic: audio/video buffers are fragmented MP4 (`ftyp` init followed by `moof` media fragments);
+- timing diagnostic: XHR responses are close to appends but usually ambiguous, so nearest-XHR mapping is unsafe;
+- identity diagnostic: 30 XHR ArrayBuffers produce 60 MSE appends with zero exact/backing-buffer identity matches;
+- raw-source diagnostic: all 30 XHR ArrayBuffers classify as `other`, not a standard media container;
+- DRM-boundary diagnostic: `eme=0`, `initData=none`, and `drm=none` for both audio/video init fragments.
+
+Confirmed interpretation for the tested player:
+
+- useful standard fMP4 exists only after page-side transformation;
+- replaying detected URLs cannot reconstruct this transport safely;
+- the observed post-transform fMP4 is clear/non-DRM within the tested EME/CENC checks.
+
+Implementation on `fix/mse-append-capture`:
+
+- MSE Download creates a native capture session and reloads the page once;
+- the matching player frame arms a capture handshake at `document_start`;
+- capture is inactive during ordinary browsing and detection;
+- clear SourceBuffer fragments are copied only after the native append call returns, split into 192 KiB chunks, and sent through content/background to CoApp;
+- CoApp spools each SourceBuffer to a temporary ordered track file with bounded pending state;
+- source-end/media-end finalizes capture; FFmpeg stream-copies the first video/audio tracks into the requested output;
+- EME events or CENC markers abort capture instead of attempting protected-media handling;
+- cancellation, errors, and host exit clean temporary capture files.
+
+Status: implementation complete on the work branch; full build and real-site playback/output validation are pending.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
