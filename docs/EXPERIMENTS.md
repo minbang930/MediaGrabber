@@ -459,7 +459,8 @@ Teardown validation result:
 Final result:
 
 - PR #28 passed the full manual acceptance for the tested Windows/Chromium transformed-XHR MSE workflow;
-- the temporary PR28 build-identification markers were removed before merge preparation.
+- the temporary PR28 build-identification markers were removed before merge preparation;
+- PR #28 merged to `main` as `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
 
 ## Candidate reconstruction issue
 
