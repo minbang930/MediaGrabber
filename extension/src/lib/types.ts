@@ -48,6 +48,8 @@ export interface VideoInfo {
   fileSize?: number;
   detectionSource?: 'webRequest:url' | 'webRequest:content-type' | 'content:mse' | 'content:dom' | 'unknown';
   detectionScheme?: string;
+  detectionDetail?: string;
+  detectionFrame?: 'top' | 'subframe';
 }
 
 export interface DownloadProgress {
