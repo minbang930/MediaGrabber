@@ -14,7 +14,7 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 fixed the player regression and PR #6 merged the DOM-source-noise fix, reducing the popup from 14 entries to 1. Diagnostics through PR #14 then showed that the remaining visible HLS is an image-only playlist (`image:1118`) while a real `mse` candidate is hidden. PR #8 was closed without merge because its FFmpeg HLS tuning targeted that wrong image playlist. Branch `fix/filter-image-hls` now excludes image-only HLS candidates.
+PR #3 fixed the player regression and PR #6 merged the DOM-source-noise fix, reducing the popup from 14 entries to 1. Diagnostics through PR #14 then showed that the remaining visible HLS is an image-only playlist (`image:1118`) while a real `mse` candidate is hidden. PR #8 was closed without merge because its FFmpeg HLS tuning targeted that wrong image playlist. Draft PR #15 (`fix/filter-image-hls`) now excludes image-only HLS candidates.
 
 A separate direct-download test currently fails with HTTP 404.
 
