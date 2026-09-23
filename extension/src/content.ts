@@ -24,7 +24,9 @@ class MediaDetector {
   private mseCaptureStarted = false;
   private mseCaptureStartAttempts = 0;
   private mseCaptureStartTimer: number | undefined;
-  private mseCaptureSendQueue: Promise<void> = Promise.resolve();
+  private mseCapturePendingMessages = 0;
+  private mseCaptureTerminalMessage: any | undefined;
+  private readonly mseCaptureMaxPendingMessages = 64;
   private mseCaptureFinished = false;
   private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
     totalBytes: 0,
@@ -61,7 +63,6 @@ class MediaDetector {
     this.detectedVideos = [];
     this.lastMetadataKey = '';
     this.mseState = { totalBytes: 0, segmentUrls: [] };
-    this.mseCaptureFinished = false;
     this.sendNavigation(pageUrl, this.pageGeneration);
     this.scheduleMetadataSend();
   }
@@ -320,11 +321,62 @@ class MediaDetector {
     });
   }
 
+  private queueMseCaptureTerminal(message: any): void {
+    if (!this.mseCaptureTerminalMessage) {
+      this.mseCaptureTerminalMessage = message;
+    }
+    this.flushMseCaptureTerminal();
+  }
+
+  private flushMseCaptureTerminal(): void {
+    if (this.mseCapturePendingMessages !== 0 || !this.mseCaptureTerminalMessage) return;
+    const message = this.mseCaptureTerminalMessage;
+    this.mseCaptureTerminalMessage = undefined;
+    void this.sendMseCaptureMessage(message).catch((error) => {
+      console.error('[MediaGrabber] MSE capture terminal message failed:', error);
+    });
+  }
+
+  private failMseCaptureTransport(error: Error): void {
+    if (!this.mseCaptureSessionId || this.mseCaptureFinished) return;
+    this.mseCaptureFinished = true;
+    window.postMessage({
+      source: 'MediaGrabber-Content',
+      type: 'mse-capture-stop',
+      sessionId: this.mseCaptureSessionId
+    }, '*');
+    this.queueMseCaptureTerminal({
+      type: 'MSE_CAPTURE_ERROR',
+      sessionId: this.mseCaptureSessionId,
+      error: error.message
+    });
+  }
+
   private enqueueMseCaptureMessage(message: any): void {
-    this.mseCaptureSendQueue = this.mseCaptureSendQueue
-      .then(() => this.sendMseCaptureMessage(message))
+    const terminal = message?.type === 'MSE_CAPTURE_FINISH' || message?.type === 'MSE_CAPTURE_ERROR';
+    if (terminal) {
+      this.queueMseCaptureTerminal(message);
+      return;
+    }
+
+    if (
+      message?.type === 'MSE_CAPTURE_CHUNK' &&
+      this.mseCapturePendingMessages >= this.mseCaptureMaxPendingMessages
+    ) {
+      this.failMseCaptureTransport(new Error('MSE capture transport could not keep up with playback.'));
+      return;
+    }
+
+    this.mseCapturePendingMessages++;
+    void this.sendMseCaptureMessage(message)
       .catch((error) => {
-        console.error('[MediaGrabber] MSE capture transport failed:', error);
+        this.failMseCaptureTransport(
+          error instanceof Error ? error : new Error(String(error))
+        );
+      })
+      .finally(() => {
+        this.mseCapturePendingMessages = Math.max(0, this.mseCapturePendingMessages - 1);
+        this.flushMseCaptureTerminal();
       });
   }
 
