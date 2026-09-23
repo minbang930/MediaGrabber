@@ -262,6 +262,10 @@ async function returnFocusToOriginalMseWindow(session: MseCaptureSession): Promi
   session.returnedFocusToOriginalWindow = true;
   try {
     await chrome.windows.update(session.originalWindowId, { focused: true });
+    notify(
+      'MSE capture running',
+      'You can use other tabs now. Keep the dedicated capture window open and not minimized until the download finishes.'
+    );
   } catch {
     // The user may have closed the original window. Capture can continue.
   }
