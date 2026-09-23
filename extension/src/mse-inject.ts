@@ -43,6 +43,10 @@
   let accelerationRetryTimer: number | undefined;
   let accelerationRetryAttempts = 0;
   let accelerationTargetMode: 'blob' | 'playing-video' | 'playing-media' | null = null;
+  let capturePipElement: HTMLVideoElement | null = null;
+  let capturePipOwned = false;
+  let capturePipRequestInFlight = false;
+  let capturePipPermanentFailure = false;
 
   function postToContentScript(payload: any, generation = pageGeneration): void {
     if (generation !== pageGeneration) return;
@@ -76,7 +80,146 @@
     captureBytes = 0;
     captureFragments = 0;
     protectedMediaObserved = false;
+    restoreCapturePictureInPicture();
     restoreCaptureAcceleration();
+  }
+
+  function postCapturePipState(
+    state: 'waiting-user' | 'active' | 'existing' | 'left' | 'unsupported' | 'failed',
+    detail?: string
+  ): void {
+    if (!activeCaptureSession || captureFinished) return;
+    postToContentScript({
+      type: 'mse-capture-pip',
+      sessionId: activeCaptureSession,
+      state,
+      detail: detail || ''
+    });
+  }
+
+  function findCapturePipTarget(): HTMLVideoElement | undefined {
+    if (acceleratedMediaElement instanceof HTMLVideoElement) {
+      return acceleratedMediaElement;
+    }
+
+    const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('video'))
+      .filter((video) =>
+        video.readyState > 0 &&
+        !video.disablePictureInPicture
+      );
+
+    const captured = videos.find((video) => isCapturedMediaElement(video));
+    if (captured) return captured;
+
+    return videos.length === 1 ? videos[0] : undefined;
+  }
+
+  function restoreCapturePictureInPicture(): void {
+    capturePipRequestInFlight = false;
+    capturePipPermanentFailure = false;
+    const element = capturePipElement;
+    const owned = capturePipOwned;
+    capturePipElement = null;
+    capturePipOwned = false;
+
+    if (
+      owned &&
+      element &&
+      document.pictureInPictureElement === element
+    ) {
+      try {
+        void document.exitPictureInPicture().catch(() => {});
+      } catch {}
+    }
+  }
+
+  function requestCapturePictureInPictureFromUserGesture(): void {
+    if (
+      !activeCaptureSession ||
+      captureFinished ||
+      protectedMediaObserved ||
+      capturePipRequestInFlight ||
+      capturePipPermanentFailure
+    ) return;
+
+    if (document.pictureInPictureElement) {
+      capturePipElement = document.pictureInPictureElement instanceof HTMLVideoElement
+        ? document.pictureInPictureElement
+        : null;
+      capturePipOwned = false;
+      postCapturePipState('existing');
+      return;
+    }
+
+    if (!document.pictureInPictureEnabled) {
+      capturePipPermanentFailure = true;
+      postCapturePipState('unsupported', 'document-disabled');
+      return;
+    }
+
+    if (!navigator.userActivation?.isActive) return;
+
+    const video = findCapturePipTarget();
+    if (!video) return;
+
+    if (video.disablePictureInPicture) {
+      capturePipPermanentFailure = true;
+      postCapturePipState('unsupported', 'video-disabled');
+      return;
+    }
+
+    const request = (video as HTMLVideoElement & {
+      requestPictureInPicture?: () => Promise<any>;
+    }).requestPictureInPicture;
+    if (typeof request !== 'function') {
+      capturePipPermanentFailure = true;
+      postCapturePipState('unsupported', 'api-unavailable');
+      return;
+    }
+
+    capturePipRequestInFlight = true;
+    try {
+      const promise = request.call(video);
+      void promise.then(() => {
+        capturePipRequestInFlight = false;
+        if (!activeCaptureSession || captureFinished) {
+          try {
+            if (document.pictureInPictureElement === video) {
+              void document.exitPictureInPicture().catch(() => {});
+            }
+          } catch {}
+          return;
+        }
+
+        capturePipElement = video;
+        capturePipOwned = true;
+        postCapturePipState('active');
+
+        video.addEventListener('leavepictureinpicture', () => {
+          if (capturePipElement === video) {
+            capturePipElement = null;
+            capturePipOwned = false;
+            if (activeCaptureSession && !captureFinished) {
+              postCapturePipState('left');
+            }
+          }
+        }, { once: true });
+      }).catch((error: any) => {
+        capturePipRequestInFlight = false;
+        const name = String(error?.name || 'Error');
+        if (name === 'NotSupportedError' || name === 'SecurityError') {
+          capturePipPermanentFailure = true;
+        }
+        postCapturePipState('failed', name);
+      });
+    } catch (error: any) {
+      capturePipRequestInFlight = false;
+      const name = String(error?.name || 'Error');
+      if (name === 'NotSupportedError' || name === 'SecurityError') {
+        capturePipPermanentFailure = true;
+      }
+      postCapturePipState('failed', name);
+    }
   }
 
   function clearAccelerationRetry(): void {
@@ -223,6 +366,7 @@
 
   function stopCapture(error?: string): void {
     const sessionId = activeCaptureSession;
+    restoreCapturePictureInPicture();
     restoreCaptureAcceleration();
     activeCaptureSession = null;
     captureFinished = true;
@@ -238,6 +382,7 @@
   function finishCapture(): void {
     if (!activeCaptureSession || captureFinished) return;
     const sessionId = activeCaptureSession;
+    restoreCapturePictureInPicture();
     restoreCaptureAcceleration();
     captureFinished = true;
     activeCaptureSession = null;
@@ -317,6 +462,7 @@
         return;
       }
 
+      restoreCapturePictureInPicture();
       restoreCaptureAcceleration();
       activeCaptureSession = sessionId;
       captureFinished = false;
@@ -328,7 +474,10 @@
       captureBytes = 0;
       captureFragments = 0;
       accelerationRetryAttempts = 0;
+      capturePipRequestInFlight = false;
+      capturePipPermanentFailure = false;
       postToContentScript({ type: 'mse-capture-started', sessionId });
+      postCapturePipState('waiting-user');
       scheduleCaptureAcceleration();
       return;
     }
@@ -619,12 +768,17 @@
     }
   }, true);
 
+  window.addEventListener('click', () => {
+    requestCapturePictureInPictureFromUserGesture();
+  }, false);
+
   document.addEventListener('play', (event) => {
     if (
       event.target instanceof HTMLMediaElement &&
       activeCaptureSession &&
       isCapturedMediaElement(event.target)
     ) {
+      requestCapturePictureInPictureFromUserGesture();
       scheduleCaptureAcceleration();
     }
   }, true);
