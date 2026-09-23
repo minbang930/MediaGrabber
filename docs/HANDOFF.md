@@ -4,6 +4,8 @@ Last updated: 2026-09-23
 
 ## Just completed
 
+- Workspace bootstrap merged through PR #1. Bootstrap merge commit: 0c58e0f7b891af62e1bb63ed946001f4ca0a0dfc.
+
 - Initialized the fork as a long-term ChatGPT/Codex workspace.
 - Replaced stale top-level agent guidance with repository-first operating instructions.
 - Added current project, state, architecture, decision, roadmap, experiment, and working-style documents.
