@@ -42,7 +42,7 @@ extension/src/content.ts:
 - builds MSE media candidates;
 - forwards media and page metadata to the background service worker.
 
-Its current "All Segments" MSE quality builds a list of multiple FFmpeg -i inputs. That behavior is under validation.
+For the new MSE capture path, it also performs the isolated-world bridge between MAIN-world append data and the background service worker. Capture is armed only after an explicit download request; ordinary detection does not retain media payload bytes.
 
 #### MAIN-world MSE instrumentation
 
