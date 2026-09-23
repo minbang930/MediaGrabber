@@ -146,7 +146,30 @@ Experiment on branch `fix/hls-extensionless-segments`:
 - for rewritten temporary local manifests, additionally allow `file` because the CoApp materializes the manifest on disk;
 - do not relax the extension policy for DASH/direct/yt-dlp paths.
 
-Status: implementation complete on the branch, real-site validation pending.
+Result after PR #8: playback remained normal and the previous terminal `invalid-data` changed to `Output file does not contain any stream`.
+
+Closed PR #9 structure result:
+
+- HLS version 6 media playlist;
+- 1118 segments, all classified as nonstandard/other extensions;
+- no `EXT-X-MAP`, byte ranges, LL-HLS parts/preload hints, or I-frame-only mode;
+- end list present;
+- encryption is AES-128 with identity key format;
+- FFmpeg terminal category is no-stream.
+
+This does not match SAMPLE-AES-style protected media and remains in normal non-DRM HLS scope.
+
+Closed PR #10 browser-response result during normal playback:
+
+- 36 known segment responses observed;
+- all returned HTTP 200;
+- all reported Content-Type `text/plain`;
+- Content-Length was unavailable for all observed responses;
+- no matching AES key response was observed after the diagnostic target set was registered.
+
+Because playback is normal, `text/plain` alone cannot be treated as proof of a bad segment response. The next experiment is request-context presence only.
+
+Follow-up branch `diag/hls-request-context` stores only hashed URL identifiers in memory and counts whether exact-matched segment/key requests contain Cookie, Authorization, Range, Referer, or Origin headers. It does not store or display any header value.
 
 ## Candidate reconstruction issue
 
