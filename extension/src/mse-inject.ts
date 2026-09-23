@@ -129,67 +129,6 @@
     postToContentScript({ type: 'media-url-map', originalUrl, relayUrl }, generation);
   }
 
-  function wrapXhrInstance(xhr: any): void {
-    if (!xhr || xhr.__MediaGrabberRelayWrapped || typeof xhr.open !== 'function') return;
-    xhr.__MediaGrabberRelayWrapped = true;
-    let report = () => {};
-    for (const property of ['onload', 'onreadystatechange', 'onloadend']) {
-      try {
-        let handler: any;
-        Object.defineProperty(xhr, property, {
-          configurable: true,
-          get: () => handler,
-          set: (value: any) => {
-            handler = typeof value === 'function'
-              ? function(this: any, event: any): any {
-                report();
-                return value.call(this, event);
-              }
-              : value;
-          }
-        });
-      } catch {}
-    }
-    const originalOpen = xhr.open;
-    xhr.open = function(method: string, url: string, ...args: any[]): any {
-      const originalUrl = String(url || '');
-      const generation = pageGeneration;
-      const startTime = performance.now();
-      report = () => reportMediaUrlMapping(originalUrl, startTime, xhr.responseURL, generation);
-      try {
-        xhr.addEventListener('loadend', report, { once: true });
-      } catch {}
-      return originalOpen.call(this, method, url, ...args);
-    };
-  }
-
-  function wrapXhrConstructor(value: any): any {
-    if (!value || value.__MediaGrabberRelayConstructor) return value;
-    const Wrapped = function(this: any, ...args: any[]): any {
-      const xhr = new value(...args);
-      wrapXhrInstance(xhr);
-      return xhr;
-    } as any;
-    Wrapped.prototype = value.prototype;
-    try { Object.setPrototypeOf(Wrapped, value); } catch {}
-    Wrapped.__MediaGrabberRelayConstructor = true;
-    return Wrapped;
-  }
-
-  try {
-    let currentXhr = window.XMLHttpRequest;
-    const descriptor = Object.getOwnPropertyDescriptor(window, 'XMLHttpRequest');
-    Object.defineProperty(window, 'XMLHttpRequest', {
-      configurable: true,
-      enumerable: descriptor?.enumerable ?? true,
-      get: () => currentXhr,
-      set: (value: any) => { currentXhr = wrapXhrConstructor(value); }
-    });
-    currentXhr = wrapXhrConstructor(currentXhr);
-  } catch {
-    // Some page environments expose an immutable XMLHttpRequest property.
-  }
-
   const origCreateObjectURL = URL.createObjectURL;
   URL.createObjectURL = function(obj: any): string {
     const url = origCreateObjectURL.call(this, obj);
@@ -297,19 +236,36 @@
 
   const origXHROpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method: string, url: string): void {
+    const originalUrl = String(url || '');
     const generation = pageGeneration;
-    if (looksLikeSegment(url) && generation === pageGeneration && MSE_STATE.segmentUrls.length < 500) {
-      MSE_STATE.segmentUrls.push(url);
-      if (url.indexOf('init') >= 0 || MSE_STATE.segmentUrls.length === 1) {
-        MSE_STATE.initSegmentUrl = MSE_STATE.initSegmentUrl || url;
+    const startTime = performance.now();
+
+    // Preserve the native XMLHttpRequest constructor and event-handler properties.
+    // Observe completion through a normal EventTarget listener instead of wrapping
+    // each XHR instance or redefining onload/onreadystatechange/onloadend.
+    const result = origXHROpen.apply(this, arguments as any);
+
+    if (looksLikeSegment(originalUrl) && generation === pageGeneration && MSE_STATE.segmentUrls.length < 500) {
+      MSE_STATE.segmentUrls.push(originalUrl);
+      if (originalUrl.indexOf('init') >= 0 || MSE_STATE.segmentUrls.length === 1) {
+        MSE_STATE.initSegmentUrl = MSE_STATE.initSegmentUrl || originalUrl;
       }
       postToContentScript({
         type: 'segment-url',
-        url,
-        isInit: url.indexOf('init') >= 0,
+        url: originalUrl,
+        isInit: originalUrl.indexOf('init') >= 0,
         totalUrls: MSE_STATE.segmentUrls.length
       }, generation);
     }
-    return origXHROpen.apply(this, arguments as any);
+
+    if (isLikelyMediaRequest(originalUrl)) {
+      try {
+        this.addEventListener('loadend', () => {
+          reportMediaUrlMapping(originalUrl, startTime, this.responseURL, generation);
+        }, { once: true });
+      } catch {}
+    }
+
+    return result;
   };
 })();
