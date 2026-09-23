@@ -4,9 +4,9 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
-- Validate `fix/filter-image-hls`: image-only HLS should disappear while the real MSE candidate remains visible and playback stays normal.
-- Test the surfaced MSE candidate for full-video download.
-- If MSE download is partial, replace the current multiple-independent-input assembly with an ordered reconstruction/mux strategy based on the confirmed fragment format.
+- Diagnose why the surfaced MSE candidate has no `All Segments` quality by comparing append count, SourceBuffer count, captured URL count, and init-state handoff.
+- If URL capture is missing, improve observation without reintroducing invasive player hooks; if init handoff alone is missing, fix that narrow mismatch.
+- Only after reliable per-buffer segment capture exists, replace the current multiple-independent-input assembly with ordered reconstruction/muxing.
 - Diagnose the separate direct-download HTTP 404 and determine the minimal required request context.
 
 ## Next
