@@ -20,11 +20,10 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Validate Cancel during an active accelerated MSE capture: capture should stop, playback should remain usable, the original playback rate should be restored, and no partial final output should be reported as complete.
-2. Validate temporary-file cleanup after cancel/error/success using only filesystem presence/count checks; do not inspect or log media contents.
-3. Add deterministic coverage for native fragment ordering/completeness, session validation, and capture-state helpers, then add a basic PR build workflow.
-4. After those checks, review the full PR #22 diff/status and merge to main if clean.
-5. Return to the separate direct-download HTTP 404 and determine the minimal safe request context required.
+1. Validate temporary-file cleanup after cancel/error/success using only filesystem presence/count checks; do not inspect or log media contents.
+2. Add deterministic coverage for native fragment ordering/completeness, session validation, and capture-state helpers, then add a basic PR build workflow.
+3. After those checks, review the full PR #22 diff/status and merge to main if clean.
+4. Return to the separate direct-download HTTP 404 and determine the minimal safe request context required.
 
 ## Start here
 
