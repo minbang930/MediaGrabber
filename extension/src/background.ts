@@ -195,6 +195,7 @@ interface MseCaptureSession {
   sourceFrameId?: number;
   sourceFrameUrl?: string;
   activeFrameId?: number;
+  armedFrameIds: Set<number>;
   outputPath: string;
   finalizing: boolean;
   firstChunkSeen: boolean;
@@ -1038,6 +1039,7 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       tabId,
       sourceFrameId: video.sourceFrameId,
       sourceFrameUrl: video.sourceFrameUrl,
+      armedFrameIds: new Set<number>(),
       outputPath,
       finalizing: false,
       firstChunkSeen: false
@@ -1272,20 +1274,33 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
 
 function mseCaptureSenderMatches(
   session: MseCaptureSession,
-  sender: chrome.runtime.MessageSender,
-  allowFrameRelock = false
+  sender: chrome.runtime.MessageSender
 ): boolean {
   if (sender.tab?.id !== session.tabId) return false;
   const frameId = sender.frameId ?? 0;
 
-  if (session.activeFrameId !== undefined && !allowFrameRelock) {
+  if (session.activeFrameId !== undefined) {
     return frameId === session.activeFrameId;
   }
 
-  if (session.sourceFrameId === 0) return frameId === 0;
-  if (session.sourceFrameUrl && sender.url === session.sourceFrameUrl) return true;
-  if (session.sourceFrameId !== undefined) return frameId === session.sourceFrameId;
-  return frameId === 0;
+  return session.armedFrameIds.has(frameId);
+}
+
+function stopOtherMseCaptureFrames(session: MseCaptureSession, keepFrameId: number): void {
+  for (const frameId of session.armedFrameIds) {
+    if (frameId === keepFrameId) continue;
+    try {
+      chrome.tabs.sendMessage(
+        session.tabId,
+        { type: 'MSE_CAPTURE_STOP', sessionId: session.sessionId },
+        { frameId },
+        () => { void chrome.runtime.lastError; }
+      );
+    } catch {
+      // Candidate frame may already have navigated away.
+    }
+  }
+  session.armedFrameIds = new Set([keepFrameId]);
 }
 
 function updateMseCapturePhase(
@@ -1324,10 +1339,18 @@ function handleMseCaptureReady(sender: chrome.runtime.MessageSender): any {
 
   const session = mseCaptureByTab.get(tabId);
   if (!session || session.finalizing) return { active: false };
-  if (!mseCaptureSenderMatches(session, sender, true)) return { active: false };
 
-  session.activeFrameId = sender.frameId ?? 0;
-  updateMseCapturePhase(session, 'frame-ready');
+  const frameId = sender.frameId ?? 0;
+  if (session.activeFrameId !== undefined && frameId !== session.activeFrameId) {
+    return { active: false };
+  }
+
+  const firstReadyFrame = session.armedFrameIds.size === 0;
+  session.armedFrameIds.add(frameId);
+  if (firstReadyFrame) {
+    updateMseCapturePhase(session, 'frame-ready');
+  }
+
   return { active: true, sessionId: session.sessionId };
 }
 
@@ -1357,6 +1380,12 @@ async function handleMseCaptureChunk(sender: chrome.runtime.MessageSender, messa
     !mseCaptureSenderMatches(session, sender)
   ) {
     return { success: false, stale: true };
+  }
+
+  const frameId = sender.frameId ?? 0;
+  if (session.activeFrameId === undefined) {
+    session.activeFrameId = frameId;
+    stopOtherMseCaptureFrames(session, frameId);
   }
 
   const result = await nativeClient.mseCaptureAppend(
