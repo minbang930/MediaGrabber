@@ -27,6 +27,7 @@ const navigationGenerationByTab = new Map<number, number>();
 const currentPageUrlByTab = new Map<number, string | null>();
 const relayMappingsByTab = new Map<number, Map<string, string>>();
 const relayCodecsByTab = new Map<number, Map<string, RelayCodec>>();
+const mseSegmentUrlsByTab = new Map<number, Set<string>>();
 
 interface RelayCodec {
   hour: number;
@@ -49,6 +50,7 @@ function resetTabState(tabId: number): void {
   ytdlpFormatUrlByTab.delete(tabId);
   relayMappingsByTab.delete(tabId);
   relayCodecsByTab.delete(tabId);
+  mseSegmentUrlsByTab.delete(tabId);
   chrome.action.setBadgeText({ tabId, text: '' }, () => { void chrome.runtime.lastError; });
 }
 
@@ -445,8 +447,16 @@ function getVisibleVideosForTab(tabId: number): VideoInfo[] {
   return timedVideos.length > 0 ? timedVideos : videos;
 }
 
+function isRawMediaEntry(video: VideoInfo): boolean {
+  return video.type === 'mp4' || video.type === 'webm' || video.type === 'direct';
+}
+
 function upsertVideo(tabId: number, video: VideoInfo): void {
   let videos = mediaByTab.get(tabId) || [];
+
+  if (isRawMediaEntry(video) && mseSegmentUrlsByTab.get(tabId)?.has(video.url)) {
+    return;
+  }
 
   if (video.type === 'hls') {
     const childUrls = new Set([
@@ -1137,6 +1147,9 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
     case 'MEDIA_URL_MAP':
       return handleMediaUrlMap(sender.tab?.id, message, sender.frameId, sender.url, sender.tab?.url);
 
+    case 'MSE_SEGMENT_URL':
+      return handleMseSegmentUrl(sender.tab?.id, message, sender.frameId, sender.url, sender.tab?.url);
+
     case 'PAGE_METADATA':
       return handlePageMetadata(sender.tab?.id, message.metadata, sender.frameId, sender.url, sender.tab?.url);
 
@@ -1206,6 +1219,38 @@ function handleVideoDetected(tabId: number | undefined, video: VideoInfo, frameI
   upsertVideo(tabId, video);
   console.log(`[MediaGrabber] Detected video on tab ${tabId}:`, video.title);
   return { success: true, count: (mediaByTab.get(tabId) || []).length };
+}
+
+function handleMseSegmentUrl(tabId: number | undefined, segment: any, frameId?: number, frameUrl?: string, senderTabUrl?: string): any {
+  if (tabId === undefined) return { error: 'No tabId' };
+  const currentUrl = currentTopPageUrl(tabId, senderTabUrl);
+  if (!segment.pageUrl || !frameUrl || segment.pageUrl !== frameUrl || !currentUrl) {
+    return { success: true, stale: true };
+  }
+  if (frameId === 0 && segment.pageUrl !== currentUrl) {
+    return { success: true, stale: true };
+  }
+  if (!isCurrentContentGeneration(tabId, segment.generation, frameId === 0)) {
+    return { success: true, stale: true };
+  }
+  if (typeof segment.url !== 'string' || !/^https?:\/\//i.test(segment.url)) {
+    return { success: true };
+  }
+
+  const segmentUrls = mseSegmentUrlsByTab.get(tabId) || new Set<string>();
+  if (segmentUrls.has(segment.url)) return { success: true };
+  segmentUrls.add(segment.url);
+  mseSegmentUrlsByTab.set(tabId, segmentUrls);
+
+  const videos = mediaByTab.get(tabId) || [];
+  const filtered = videos.filter((video) =>
+    !(isRawMediaEntry(video) && video.url === segment.url)
+  );
+  if (filtered.length !== videos.length) {
+    commitVideos(tabId, filtered);
+  }
+
+  return { success: true };
 }
 
 function handleMediaUrlMap(tabId: number | undefined, mapping: any, frameId?: number, frameUrl?: string, senderTabUrl?: string): any {
