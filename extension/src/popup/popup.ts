@@ -659,7 +659,12 @@ function updateProgressUI(progress: any): void {
         updateStatus('Player frame connected — waiting for the MAIN-world capture hook…', 'info');
         break;
       case 'hook-armed':
-        updateStatus('Capture hook armed — start playback from the beginning.', 'info');
+        updateStatus(
+          progress.pipState === 'waiting-user'
+            ? 'Capture hook armed — press Play once to start capture and Picture-in-Picture.'
+            : 'Capture hook armed — start playback from the beginning.',
+          'info'
+        );
         break;
       case 'first-fragment':
         updateStatus('First media fragment captured — capture is active.', 'info');
@@ -672,7 +677,16 @@ function updateProgressUI(progress: any): void {
         const effectiveRate = typeof progress.effectiveRate === 'number' ? progress.effectiveRate : 0;
         const rateSuffix = effectiveRate > 1 ? ` · ${effectiveRate.toFixed(1)}×` : '';
         const targetSuffix = progress.targetMode ? ` · target=${progress.targetMode}` : '';
-        updateStatus(`Capturing… ${captured} · ${fragments} fragments${rateSuffix}${targetSuffix}`, 'info');
+        const pipSuffix = progress.pipState === 'active' || progress.pipState === 'existing'
+          ? ' · PiP'
+          : progress.pipState === 'left'
+            ? ' · PiP closed'
+            : progress.pipState === 'unsupported'
+              ? ' · PiP unsupported'
+              : progress.pipState === 'failed'
+                ? ` · PiP failed${progress.pipDetail ? ` (${progress.pipDetail})` : ''}`
+                : '';
+        updateStatus(`Capturing… ${captured} · ${fragments} fragments${rateSuffix}${targetSuffix}${pipSuffix}`, 'info');
         break;
       }
       case 'finalizing':
@@ -746,9 +760,12 @@ function updateProgressUI(progress: any): void {
     const effective = progress.effectiveRate.toFixed(1);
     const requested = progress.requestedRate.toFixed(1);
     const target = progress.targetMode ? ` · target=${progress.targetMode}` : '';
+    const pip = progress.pipState === 'active' || progress.pipState === 'existing'
+      ? ' · PiP active'
+      : '';
     speedEl.textContent = progress.effectiveRate === progress.requestedRate
-      ? `Playback: ${effective}×${target}`
-      : `Playback: ${effective}× (requested ${requested}×)${target}`;
+      ? `Playback: ${effective}×${target}${pip}`
+      : `Playback: ${effective}× (requested ${requested}×)${target}${pip}`;
   }
 
   if (etaEl && progress.eta) {
