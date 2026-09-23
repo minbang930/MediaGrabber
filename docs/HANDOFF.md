@@ -20,9 +20,9 @@ A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Build/load `diag/media-entry-provenance` and play the same site for several seconds.
-2. Record only the popup source/type summary (for example `mp4/webRequest:url × 14`); no URL/query/header data is needed.
-3. Use that confirmed provenance to implement the next grouping/reconstruction change on a separate fix branch.
+1. Pull/rebuild `diag/media-entry-provenance`; it now includes scheme-only diagnostics.
+2. Record only the popup summary, expected shape like `direct/content:dom/blob × 13, hls/webRequest:content-type/https × 1`.
+3. If the 13 entries are `blob`, filter non-HTTP(S) DOM URLs from generic direct detection and rely on the MSE/HLS paths. If they are `https`, inspect extensionless HTTP DOM dedup/grouping instead.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
