@@ -60,6 +60,26 @@ It reports MSE state and original-to-relay URL mappings to content.ts using wind
 
 This layer is currently the highest compatibility-risk component because it mutates page-global APIs. The current compatibility patch removes XMLHttpRequest constructor replacement and per-instance event-property redefinition, while retaining a minimal prototype.open observer. The project requirement is to retain observability while preserving native page semantics.
 
+#### MSE background keep-alive
+
+During an explicit MSE capture, the extension starts a video-only Chrome `tabCapture` stream for the selected tab before reload and consumes it in a hidden offscreen extension document.
+
+Purpose:
+
+- keep Chromium rendering/scheduling the captured tab when it is backgrounded or fully occluded by another application;
+- avoid the visible PiP window required by earlier experiments.
+
+Boundaries:
+
+- tab-captured pixels are not used as download media, decoded for analysis, saved, or forwarded to the CoApp;
+- audio is not requested by this keep-alive stream;
+- the actual downloaded media still comes only from the explicit clear `SourceBuffer.appendBuffer()` capture path;
+- the tab-capture stream is stopped on capture completion, cancellation, error, or tab closure;
+- Chrome may show its standard tab/screen-sharing capture indicator while the keep-alive is active.
+
+The offscreen stream-ID handoff requires Chrome 116+; the runtime checks this capability before starting the keep-alive.
+
+
 ## Stream parsing and relay rewriting
 
 HLS and DASH parsers live under extension/src/lib/.
