@@ -60,7 +60,7 @@ Last reviewed: 2026-09-23
 Details and observations are in EXPERIMENTS.md.
 
 1. Native host installation works after the separate setup executable is installed. Installing only the extension produced "Specified native messaging host not found"; after the setup executable ran, that error disappeared.
-2. MAIN-world instrumentation can break playback on at least one tested site. With the stock mse-inject.js content script enabled, the site's video did not play. Removing that MAIN-world content-script entry restored playback. A compatibility patch on `fix/minimize-xhr-hook` removes XMLHttpRequest constructor replacement and per-instance event-property redefinition; real-site playback validation is still pending.
+2. MAIN-world instrumentation can break playback on at least one tested site. With the stock mse-inject.js content script enabled, the site's video did not play. Removing that MAIN-world content-script entry restored playback. A compatibility patch on `fix/minimize-xhr-hook` removes XMLHttpRequest constructor replacement and per-instance event-property redefinition. User manual validation confirmed that the previously broken player now plays normally with the MSE injector enabled.
 3. Removing the MSE injector is not a viable final fix. After removal, the extension exposed roughly 14 media-looking entries on the same site, and downloads appeared to contain only individual or partial segments rather than the full video.
 4. A separate tested site returns "Download failed with HTTP 404" on direct download. The exact server-side cause is not yet proven.
 5. The code currently sends no saved request headers in the direct-download call. startDownload() passes URL, directory, and filename to downloads.download; the CoApp supports custom headers, but the extension does not currently provide them on that path. This is a plausible compatibility gap for referer/origin/auth-sensitive URLs, not yet a proven cause of the observed 404.
@@ -79,7 +79,7 @@ extension/src/mse-inject.ts currently modifies several page-global APIs, includi
 - SourceBuffer.prototype.appendBuffer;
 - MediaSource.prototype.duration.
 
-The strongest current compatibility hypothesis is that the previous XHR constructor and event-property wrapping was too invasive for some players. The current branch removes those mechanisms and keeps only prototype.open plus a normal loadend listener. This still requires real-site A/B validation before the hypothesis can be confirmed.
+The strongest current compatibility hypothesis is that the previous XHR constructor and event-property wrapping was too invasive for some players. The current branch removes those mechanisms and keeps only prototype.open plus a normal loadend listener. The real-site playback A/B result supports this hypothesis: playback is normal with the minimized XHR hook. The popup still shows roughly 14 media entries, so fragment grouping remains a separate unresolved problem.
 
 ## Documentation state
 
@@ -91,7 +91,8 @@ The strongest current compatibility hypothesis is that the previous XHR construc
 
 - Full repository build could not be executed by the agent environment because outbound GitHub DNS was unavailable during clone.
 - The modified XHR hook was separately type-checked against DOM typings with TypeScript 5.8 and compiled successfully.
-- The repository's actual TypeScript 6/esbuild build and browser playback test are still required before merge.
+- User manual browser validation passed for the primary acceptance criterion: normal playback with the MSE injector enabled.
+- The popup still shows roughly 14 media entries, so full-stream grouping/download remains unresolved.
 
 ## Open questions
 
