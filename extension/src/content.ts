@@ -19,9 +19,25 @@ class MediaDetector {
   private metadataTimer: number | undefined;
   private pageUrl = window.location.href;
   private pageGeneration = 0;
-  private mseState: { blobUrl?: string; mimeType?: string; codecs?: string; totalBytes: number; segmentUrls: string[]; initSegmentUrl?: string; duration?: number } = {
+  private mseState: {
+    blobUrl?: string;
+    mimeType?: string;
+    codecs?: string;
+    totalBytes: number;
+    segmentUrls: string[];
+    initSegmentUrl?: string;
+    duration?: number;
+    appendCount: number;
+    sourceBufferCount: number;
+    capturedUrlCount: number;
+    injectorHasInit: boolean;
+  } = {
     totalBytes: 0,
-    segmentUrls: []
+    segmentUrls: [],
+    appendCount: 0,
+    sourceBufferCount: 0,
+    capturedUrlCount: 0,
+    injectorHasInit: false
   };
 
   constructor() {
@@ -51,7 +67,14 @@ class MediaDetector {
     this.manifestUrls.clear();
     this.detectedVideos = [];
     this.lastMetadataKey = '';
-    this.mseState = { totalBytes: 0, segmentUrls: [] };
+    this.mseState = {
+      totalBytes: 0,
+      segmentUrls: [],
+      appendCount: 0,
+      sourceBufferCount: 0,
+      capturedUrlCount: 0,
+      injectorHasInit: false
+    };
     this.sendNavigation(pageUrl, this.pageGeneration);
     this.scheduleMetadataSend();
   }
@@ -89,6 +112,7 @@ class MediaDetector {
           this.mseState.blobUrl = msg.blobUrl;
           this.mseState.mimeType = msg.mimeType;
           this.mseState.codecs = msg.codecs;
+          this.mseState.sourceBufferCount = Number(msg.sourceBufferCount) || this.mseState.sourceBufferCount;
           this.sendMSEToBackground();
           break;
 
@@ -99,9 +123,20 @@ class MediaDetector {
           if (this.mseState.segmentUrls.length < 500 && !this.mseState.segmentUrls.includes(msg.url)) {
             this.mseState.segmentUrls.push(msg.url);
           }
+          this.mseState.capturedUrlCount = Number(msg.totalUrls) || this.mseState.segmentUrls.length;
+          this.mseState.injectorHasInit = Boolean(msg.injectorHasInit);
           if (this.mseState.segmentUrls.length === 1 || this.mseState.segmentUrls.length % 20 === 0) {
             this.sendMSEToBackground();
           }
+          break;
+
+        case 'first-segment':
+          this.mseState.totalBytes = Number(msg.totalBytes) || this.mseState.totalBytes;
+          this.mseState.appendCount = Number(msg.segmentCount) || this.mseState.appendCount;
+          this.mseState.sourceBufferCount = Number(msg.sourceBufferCount) || this.mseState.sourceBufferCount;
+          this.mseState.capturedUrlCount = Number(msg.capturedUrlCount) || this.mseState.capturedUrlCount;
+          this.mseState.injectorHasInit = Boolean(msg.injectorHasInit);
+          this.sendMSEToBackground();
           break;
 
         case 'duration':
@@ -126,7 +161,12 @@ class MediaDetector {
           break;
 
         case 'progress':
-          this.mseState.totalBytes = msg.totalBytes;
+          this.mseState.totalBytes = Number(msg.totalBytes) || this.mseState.totalBytes;
+          this.mseState.appendCount = Number(msg.segmentCount) || this.mseState.appendCount;
+          this.mseState.sourceBufferCount = Number(msg.sourceBufferCount) || this.mseState.sourceBufferCount;
+          this.mseState.capturedUrlCount = Number(msg.capturedUrlCount) || this.mseState.capturedUrlCount;
+          this.mseState.injectorHasInit = Boolean(msg.injectorHasInit);
+          this.sendMSEToBackground();
           break;
       }
     });
@@ -140,11 +180,20 @@ class MediaDetector {
     const codec = this.mseState.codecs || '';
     const isAudioOnly = this.mseState.mimeType.startsWith('audio/');
 
+    const captureSummary = [
+      `b${this.mseState.sourceBufferCount}`,
+      `a${this.mseState.appendCount}`,
+      `u${this.mseState.capturedUrlCount}`,
+      `init${this.mseState.initSegmentUrl ? 1 : 0}`,
+      `injInit${this.mseState.injectorHasInit ? 1 : 0}`,
+      `blob${this.mseState.blobUrl ? 1 : 0}`
+    ].join(' ');
+
     const qualities: VideoQuality[] = [{
       height: 0,
       url,
       bitrate: 0,
-      label: isAudioOnly ? 'Audio' : (codec ? codec.split(',')[0] : 'MSE Stream'),
+      label: `${isAudioOnly ? 'Audio' : (codec ? codec.split(',')[0] : 'MSE Stream')} [${captureSummary}]`,
       kind: isAudioOnly ? 'audio' : 'video'
     }];
 
