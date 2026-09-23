@@ -151,6 +151,17 @@ class MediaDetector {
           }
           break;
 
+        case 'mse-capture-acceleration':
+          if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
+            this.enqueueMseCaptureMessage({
+              type: 'MSE_CAPTURE_ACCELERATION',
+              sessionId: this.mseCaptureSessionId,
+              requestedRate: Number(msg.requestedRate) || 1,
+              effectiveRate: Number(msg.effectiveRate) || 1
+            });
+          }
+          break;
+
         case 'mse-capture-progress':
           if (this.mseCaptureSessionId && msg.sessionId === this.mseCaptureSessionId) {
             this.enqueueMseCaptureMessage({
