@@ -4,6 +4,7 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 
 ## Now
 
+- Validate hidden Chrome `tabCapture` as the next MSE background/occlusion keep-alive candidate. Real-video/helper PiP are confirmed working but visibly intrusive fallbacks.
 - Diagnose the separate direct-download HTTP 404 and determine whether URL freshness/provenance or a minimal non-sensitive request context is required.
 - If request context is proven necessary, design and validate the narrowest safe propagation path; do not copy cookies/auth or broad browser context by default.
 - Keep the validated 8× chronological playback-rate strategy for MSE capture; keep seek-based acceleration out unless a future transport cannot be accelerated chronologically.
