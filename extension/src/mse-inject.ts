@@ -330,16 +330,23 @@
     const result = origXHROpen.apply(this, arguments as any);
 
     try {
-      this.addEventListener('load', () => {
+      let rememberedResponse: ArrayBuffer | undefined;
+      const rememberArrayBufferResponse = () => {
         if (generation !== pageGeneration) return;
         try {
           const response = this.response;
-          if (response instanceof ArrayBuffer) {
+          if (response instanceof ArrayBuffer && response !== rememberedResponse) {
+            rememberedResponse = response;
             xhrArrayBufferResponses.add(response);
             xhrArrayBufferResponseCount++;
           }
         } catch {}
-      });
+      };
+
+      this.addEventListener('readystatechange', () => {
+        if (this.readyState === 4) rememberArrayBufferResponse();
+      }, true);
+      this.addEventListener('load', rememberArrayBufferResponse, true);
     } catch {}
 
     if (looksLikeSegment(originalUrl) && generation === pageGeneration && MSE_STATE.segmentUrls.length < 500) {
