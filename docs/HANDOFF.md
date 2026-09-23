@@ -22,9 +22,12 @@ The separate direct-download candidate on another tested site still returns HTTP
 
 ## Next actions
 
-1. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, freshness/redirect behavior, and the minimum non-sensitive request context available to the extension/CoApp.
-2. If request context is required, design the narrowest safe propagation model; do not copy cookies, authorization tokens, or broad browser headers by default.
-3. Keep MSE compatibility evidence-driven and preserve the validated player behavior/DRM boundary.
+1. Build/load `exp/mse-pip-capture`; CoApp replacement is unnecessary.
+2. Start the tested MSE download and, after reload, press Play once. Confirm a standard Picture-in-Picture window opens and popup state reports `PiP active`.
+3. Switch to other tabs and optionally another maximized application while leaving PiP open. Confirm capture bytes/fragments continue and the final output is normal.
+4. Test Cancel once and confirm MediaGrabber-owned PiP closes, playback rate restores, and the player remains usable.
+5. If PiP opens but capture still stalls, record whether the PiP video itself keeps visibly advancing; this distinguishes media playback continuation from page-side MSE producer throttling.
+6. Then return to the direct-download HTTP 404 investigation.
 
 ## Start here
 
