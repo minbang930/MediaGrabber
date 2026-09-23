@@ -99,8 +99,7 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- Which exact part of the XHR/MSE hook breaks the tested player?
-- What transport pattern produces the roughly 14 detected fragment entries when MAIN-world MSE hooking is disabled?
-- Does that site expose a recoverable HLS/DASH manifest, or does it require reliable MSE fragment reconstruction?
+- Does the HLS candidate succeed when extension matching is relaxed only for HLS inputs under a constrained protocol whitelist?
+- If not, what HLS tag or segment format causes FFmpeg's `invalid-data` result despite successful browser-side playlist parsing?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
