@@ -188,6 +188,7 @@ const activeDownloads = new Map<string, {
     requestedRate?: number;
     effectiveRate?: number;
     targetMode?: string;
+    keepAliveMode?: string;
   };
 }>();
 
@@ -202,9 +203,77 @@ interface MseCaptureSession {
   outputPath: string;
   finalizing: boolean;
   firstChunkSeen: boolean;
+  keepAliveMode?: 'tab-capture';
 }
 
 const mseCaptureByTab = new Map<number, MseCaptureSession>();
+
+const MSE_OFFSCREEN_DOCUMENT_PATH = 'src/offscreen/offscreen.html';
+let mseOffscreenCreating: Promise<void> | null = null;
+
+async function hasMseOffscreenDocument(): Promise<boolean> {
+  const runtime = chrome.runtime as typeof chrome.runtime & {
+    getContexts?: (filter: any) => Promise<any[]>;
+  };
+  if (typeof runtime.getContexts !== 'function') return false;
+
+  const contexts = await runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [chrome.runtime.getURL(MSE_OFFSCREEN_DOCUMENT_PATH)]
+  });
+  return contexts.length > 0;
+}
+
+async function ensureMseOffscreenDocument(): Promise<void> {
+  const offscreen = (chrome as any).offscreen;
+  if (!offscreen?.createDocument) {
+    throw new Error('Background MSE keep-alive requires Chrome 116 or newer.');
+  }
+  if (await hasMseOffscreenDocument()) return;
+
+  if (!mseOffscreenCreating) {
+    mseOffscreenCreating = offscreen.createDocument({
+      url: MSE_OFFSCREEN_DOCUMENT_PATH,
+      reasons: ['USER_MEDIA'],
+      justification: 'Keep an explicit MSE capture tab rendering while it is covered by other windows.'
+    }).finally(() => {
+      mseOffscreenCreating = null;
+    });
+  }
+  await mseOffscreenCreating;
+}
+
+async function startMseTabCaptureKeepAlive(tabId: number): Promise<void> {
+  const tabCapture = (chrome as any).tabCapture;
+  if (!tabCapture?.getMediaStreamId) {
+    throw new Error('Background MSE keep-alive requires the tabCapture API.');
+  }
+
+  await ensureMseOffscreenDocument();
+  const streamId = await tabCapture.getMediaStreamId({ targetTabId: tabId });
+  const response = await chrome.runtime.sendMessage({
+    target: 'mediagrabber-offscreen',
+    type: 'MSE_TAB_CAPTURE_START',
+    tabId,
+    streamId
+  });
+  if (!response?.success) {
+    throw new Error(response?.error || 'Could not start background MSE keep-alive.');
+  }
+}
+
+async function stopMseTabCaptureKeepAlive(tabId: number): Promise<void> {
+  try {
+    if (!(await hasMseOffscreenDocument())) return;
+    await chrome.runtime.sendMessage({
+      target: 'mediagrabber-offscreen',
+      type: 'MSE_TAB_CAPTURE_STOP',
+      tabId
+    });
+  } catch {
+    // Best-effort release. Closing the captured tab also ends the stream.
+  }
+}
 
 // Popup connections
 const popupPorts = new Set<chrome.runtime.Port>();
@@ -1034,7 +1103,17 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
     const sessionId = `mse_${tabId}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const outputPath = joinOutputPath(directory, outFilename);
 
-    await nativeClient.mseCaptureStart(sessionId);
+    let keepAliveStarted = false;
+    try {
+      await startMseTabCaptureKeepAlive(tabId);
+      keepAliveStarted = true;
+      await nativeClient.mseCaptureStart(sessionId);
+    } catch (error) {
+      if (keepAliveStarted) {
+        await stopMseTabCaptureKeepAlive(tabId);
+      }
+      throw error;
+    }
 
     const session: MseCaptureSession = {
       sessionId,
@@ -1045,7 +1124,8 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       armedFrameIds: new Set<number>(),
       outputPath,
       finalizing: false,
-      firstChunkSeen: false
+      firstChunkSeen: false,
+      keepAliveMode: 'tab-capture'
     };
     mseCaptureByTab.set(tabId, session);
 
@@ -1062,7 +1142,8 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
         totalBytes: 0,
         capture: true,
         phase: 'reload',
-        fragments: 0
+        fragments: 0,
+        keepAliveMode: 'tab-capture'
       }
     });
 
@@ -1216,6 +1297,8 @@ async function handleCancelDownload(downloadId: string): Promise<any> {
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.target === 'mediagrabber-offscreen') return false;
+
   handleMessage(message, sender)
     .then(sendResponse)
     .catch((err) => sendResponse({ error: err.message }));
@@ -1318,6 +1401,7 @@ function updateMseCapturePhase(
     requestedRate: number;
     effectiveRate: number;
     targetMode: string;
+    keepAliveMode: string;
   }> = {}
 ): void {
   const dl = activeDownloads.get(session.downloadKey);
@@ -1330,6 +1414,7 @@ function updateMseCapturePhase(
     requestedRate: extra.requestedRate ?? previous?.requestedRate,
     effectiveRate: extra.effectiveRate ?? previous?.effectiveRate,
     targetMode: extra.targetMode ?? previous?.targetMode,
+    keepAliveMode: extra.keepAliveMode ?? previous?.keepAliveMode ?? session.keepAliveMode,
     capture: true,
     phase
   };
@@ -1496,6 +1581,7 @@ function sendMseCaptureStop(session: MseCaptureSession): void {
 async function failMseCapture(session: MseCaptureSession, error: string, notifyPopup = true): Promise<void> {
   sendMseCaptureStop(session);
   mseCaptureByTab.delete(session.tabId);
+  await stopMseTabCaptureKeepAlive(session.tabId);
   try {
     await nativeClient.mseCaptureAbort(session.sessionId);
   } catch {
@@ -1544,6 +1630,8 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
     } catch {
       // The output file is already complete; temp cleanup is best-effort.
     }
+
+    await stopMseTabCaptureKeepAlive(session.tabId);
 
     popupPorts.forEach((port) => {
       port.postMessage({
