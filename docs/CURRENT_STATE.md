@@ -103,7 +103,7 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 
 ## Open questions
 
-- Do browser segment requests carry Cookie, Authorization, Range, Referer, or Origin context that FFmpeg does not currently reproduce?
-- If browser request context is minimal too, does the no-stream failure come from FFmpeg receiving a different body despite HTTP 200, or from segment format/probing after AES-128 decryption?
+- Do browser Referer/Origin values exactly match the values MediaGrabber constructs for FFmpeg, or is the Referer reduced to the wrong URL scope?
+- If the values match, does the no-stream failure come from segment format/probing after AES-128 decryption rather than request context?
 - Does the direct-download 404 require Referer/Origin, cookies, another authorization header, or simply a fresher signed URL?
 - Should the fork continue to track upstream releases closely or intentionally diverge after the compatibility fixes?
