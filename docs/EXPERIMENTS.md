@@ -122,6 +122,26 @@ Follow-up fix on `fix/filter-dom-source-noise`:
 
 Result: user manual validation confirmed the popup dropped from 14 entries to 1. The remaining entry is the HLS candidate previously identified by response Content-Type. Downloading that entry still fails in FFmpeg with the generic "could not open stream" error. Conclusion: the DOM noise fix is successful; HLS download failure is a separate issue.
 
+## 2026-09-24 — Image-only HLS was hiding the real MSE candidate
+
+Diagnostic chain:
+
+- DOM noise fix reduced the popup from 14 entries to 1 while playback stayed normal.
+- The visible HLS parsed as a version-6 media playlist with 1118 segments and AES-128/identity encryption.
+- Browser segment requests succeeded with HTTP 200 and used the same Referer/Origin values that MediaGrabber supplied to FFmpeg.
+- FFmpeg opened the HLS and AES-128 crypto layer, then probed the decrypted child as `image2` with score 50.
+- Candidate-role diagnostic reported: `1 visible / 2 total · hidden mse:1 · hlsSegments image:1118`.
+
+Confirmed interpretation:
+
+- the visible HLS entry is an image/thumbnail/storyboard playlist rather than the main A/V stream;
+- the real media candidate is already detected as `mse`, but the popup's duration-first visibility rule allowed the image HLS to hide it;
+- PR #8's HLS extension-relaxation change addressed the wrong candidate and was closed without merge.
+
+Follow-up fix on `fix/filter-image-hls`: image-only HLS media playlists are excluded from user-facing A/V candidates when every parsed segment has an image extension. Master HLS and ordinary audio/video HLS are unaffected.
+
+Result: user manual validation confirmed normal playback and the MSE candidate became visible. Attempting the MSE download then failed with the existing generic FFmpeg-open error, confirming MSE reconstruction is the next separate problem.
+
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.

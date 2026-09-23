@@ -371,6 +371,19 @@ function isMediaUrl(url: URL): boolean {
   return false;
 }
 
+function isImageOnlyHlsSegments(segments?: string[]): boolean {
+  if (!segments || segments.length === 0) return false;
+
+  return segments.every((segment) => {
+    try {
+      const path = new URL(segment).pathname.toLowerCase();
+      return /\.(?:jpe?g|png|webp|avif|gif|bmp|jxl)$/.test(path);
+    } catch {
+      return false;
+    }
+  });
+}
+
 function getMediaType(url: string): VideoInfo['type'] {
   const path = new URL(url).pathname.toLowerCase();
   if (path.includes('.m3u8')) return 'hls';
@@ -542,6 +555,14 @@ async function handleInterceptedMedia(
   if (type === 'hls') {
     try {
       const parsed = await M3U8ParserWrapper.fetchAndParse(url, referer);
+
+      // Image-only HLS playlists (thumbnail/storyboard/trick-play assets) are not
+      // downloadable A/V candidates. Keeping them can hide a real MSE candidate
+      // because the popup prioritizes entries with a parsed duration.
+      if (parsed.type === 'media' && isImageOnlyHlsSegments(parsed.segments)) {
+        return;
+      }
+
       duration = parsed.duration;
       childUrls = parsed.childUrls;
 

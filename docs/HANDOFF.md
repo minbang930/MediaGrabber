@@ -14,15 +14,15 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #3 merged and user validation confirmed normal playback on the previously broken site. Follow-up diagnostics traced the 14 popup entries to 12 top-frame extensionless HTTPS `<source>` descendants, 1 subframe blob currentSrc, and 1 HLS response. Diagnostic PRs #4 and #5 were closed without merge. Draft PR #6 (`fix/filter-dom-source-noise`) applies the narrow DOM filtering correction. User manual validation confirmed the popup dropped from 14 entries to 1.
+PR #3 fixed the player regression and PR #6 merged the DOM-source-noise fix, reducing the popup from 14 entries to 1. Diagnostics through PR #14 then showed that the remaining visible HLS is an image-only playlist (`image:1118`) while a real `mse` candidate is hidden. PR #8 was closed without merge because its FFmpeg HLS tuning targeted that wrong image playlist. PR #15 (`fix/filter-image-hls`) passed manual validation: playback remained normal and the MSE candidate surfaced; its download still fails in FFmpeg and is the next focus.
 
 A separate direct-download test currently fails with HTTP 404.
 
 ## Next actions
 
-1. Merge PR #6 after final status review; its popup-count acceptance criterion passed.
-2. Diagnose the remaining HLS candidate's FFmpeg failure without exposing signed URLs or request credentials.
-3. Distinguish manifest-open failure, segment-open failure, and missing relay rewrite before changing download logic.
+1. Build/load `fix/filter-image-hls` and confirm playback remains normal.
+2. Confirm the popup now shows the MSE candidate instead of the image-only HLS entry.
+3. Attempt the MSE download and record whether it produces the full video or only partial fragments; this determines the next reconstruction fix.
 4. Reproduce the direct-download 404 with request-context diagnostics and decide what safe Referer/Origin/header support should be propagated to CoApp.
 5. Add at least a basic PR build workflow and unit coverage for deterministic parsing and argument-building logic once compatibility work stabilizes.
 
