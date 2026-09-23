@@ -239,6 +239,28 @@ Fix on PR #22:
 This preserves per-frame isolation without relying on stale pre-reload iframe IDs.
 
 Status: focused revalidation pending.
+## 2026-09-24 — First native spool write reached, sparse-chunk bug fixed
+
+Focused validation after frame relock:
+
+- reload proceeded into the native capture path far enough to surface a CoApp error:
+  `The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received undefined`;
+- this confirms post-reload frame arming, MAIN-world capture, fragment forwarding, background validation, and native RPC delivery all occurred.
+
+Confirmed CoApp defect:
+
+- a pending fragment used `new Array(chunkCount)`, creating a sparse array;
+- `Array.some()` skips unassigned sparse slots, so the fragment could be treated as complete after only one chunk arrived;
+- `flushTrack()` then iterated the holes and passed `undefined` to `fs.appendFileSync()`.
+
+Fix on PR #22:
+
+- each pending fragment now tracks an explicit `receivedCount`;
+- the chunk array is initialized with real `undefined` entries rather than holes;
+- a fragment flushes only when `receivedCount === chunkCount`;
+- flush also checks every indexed chunk and throws an explicit invariant error if completeness is violated.
+
+Status: CoApp rebuild/replacement and focused revalidation pending.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
