@@ -95,7 +95,11 @@ The previous XHR constructor and event-property wrapping was too invasive for at
 - The persistent 14-entry popup count was traced to DOM detection noise: 12 extensionless HTTPS `<source>` descendants, 1 blob currentSrc, and 1 HLS entry.
 - User manual validation confirmed the DOM source-noise fix reduced the popup from 14 entries to 1.
 - The remaining HLS candidate parses in the extension as a media playlist with 1118 segments, no relay codec/mappings are present, referer is present, no rewrite occurs, and FFmpeg classifies the failure as `invalid-data`.
-- Branch `fix/hls-extensionless-segments` applies `extension_picky=0` only to HLS inputs under a narrow protocol whitelist. Real-site validation is pending.
+- Draft PR #8 (`fix/hls-extensionless-segments`) removes the prior terminal `invalid-data` failure, but FFmpeg then reports `Output file does not contain any stream`; playback remains normal.
+- Closed PR #9 classified the HLS as version 6 media with 1118 nonstandard-extension segments, AES-128/identity encryption, no init map/byte ranges/LL-HLS/I-frame-only mode.
+- Closed PR #10 observed successful browser segment responses during playback (HTTP 200, `text/plain`, unknown Content-Length).
+- Closed PR #11 showed segment/key requests use Referer + Origin, with no Cookie/Authorization/Range. Closed PR #12 then confirmed the observed segment Referer and Origin exactly match the values MediaGrabber gives FFmpeg (34/34 each).
+- Branch `diag/hls-segment-probe` enables FFmpeg debug only for HLS and reports only safe probe-format/score/stream-count indicators; raw debug stderr is not surfaced.
 
 ## Open questions
 
