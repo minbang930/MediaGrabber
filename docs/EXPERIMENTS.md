@@ -172,6 +172,28 @@ Implementation on `fix/mse-append-capture`:
 
 Status: implementation complete on the work branch; full build and real-site playback/output validation are pending.
 
+## 2026-09-24 — First append-capture real-site validation
+
+Observation:
+
+- pressing Download created the MSE capture session and reloaded the selected tab once;
+- playback did not autoplay after reload; manual playback was required and worked;
+- after playing to the end, no output file appeared and the popup stayed in the downloading state;
+- while the capture tab was reloading/playing, the popup media list cycled through media detected in other tabs.
+
+Confirmed defect:
+
+- popup media refreshes were globally broadcast to every popup port even though `notifyPopups(tabId)` received a tab ID.
+
+Follow-up changes on PR #22:
+
+- popup ports are now bound to their selected tab and media refreshes are tab-scoped;
+- media-list refreshes are suppressed while that tab has an active download so reload-time detection does not overwrite the progress UI;
+- MSE completion now tracks the MediaSource that owns captured SourceBuffers rather than comparing against the single latest global blob URL;
+- cross-world capture payloads use `ArrayBuffer.isView` instead of realm-sensitive `instanceof`;
+- capture UI now reports captured bytes/fragments and a distinct finalizing phase.
+
+Status: second real-site validation pending. The first run confirms capture arming/reload works, but does not yet confirm that fragment transport or final mux completes.
 ## Candidate reconstruction issue
 
 content.ts currently represents an MSE "All Segments" option by emitting FFmpeg arguments with an init segment and many segment URLs as separate -i inputs, followed by -c copy.
