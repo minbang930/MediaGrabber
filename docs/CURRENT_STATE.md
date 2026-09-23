@@ -79,7 +79,7 @@ extension/src/mse-inject.ts currently modifies several page-global APIs, includi
 - SourceBuffer.prototype.appendBuffer;
 - MediaSource.prototype.duration.
 
-The strongest current compatibility hypothesis is that the previous XHR constructor and event-property wrapping was too invasive for some players. The current branch removes those mechanisms and keeps only prototype.open plus a normal loadend listener. The real-site playback A/B result supports this hypothesis: playback is normal with the minimized XHR hook. The popup still shows roughly 14 media entries, so fragment grouping remains a separate unresolved problem.
+The previous XHR constructor and event-property wrapping was too invasive for at least one tested player. PR #3 removed those mechanisms while retaining minimal observation, and user validation confirmed playback recovery. The later 14-entry popup problem was separately traced to DOM source detection noise and fixed by PR #6.
 
 ## Documentation state
 
