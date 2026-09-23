@@ -185,6 +185,8 @@ const activeDownloads = new Map<string, {
     capture?: boolean;
     phase?: string;
     fragments?: number;
+    requestedRate?: number;
+    effectiveRate?: number;
   };
 }>();
 
@@ -1245,6 +1247,9 @@ async function handleMessage(message: any, sender: chrome.runtime.MessageSender)
     case 'MSE_CAPTURE_PROGRESS':
       return handleMseCaptureProgress(sender, message);
 
+    case 'MSE_CAPTURE_ACCELERATION':
+      return handleMseCaptureAcceleration(sender, message);
+
     case 'MSE_CAPTURE_FINISH':
       return handleMseCaptureFinish(sender, message);
 
@@ -1309,6 +1314,8 @@ function updateMseCapturePhase(
   extra: Partial<{
     bytesReceived: number;
     fragments: number;
+    requestedRate: number;
+    effectiveRate: number;
   }> = {}
 ): void {
   const dl = activeDownloads.get(session.downloadKey);
@@ -1318,6 +1325,8 @@ function updateMseCapturePhase(
     bytesReceived: extra.bytesReceived ?? previous?.bytesReceived ?? 0,
     totalBytes: 0,
     fragments: extra.fragments ?? previous?.fragments ?? 0,
+    requestedRate: extra.requestedRate ?? previous?.requestedRate,
+    effectiveRate: extra.effectiveRate ?? previous?.effectiveRate,
     capture: true,
     phase
   };
@@ -1420,6 +1429,25 @@ function handleMseCaptureProgress(sender: chrome.runtime.MessageSender, message:
   const bytesReceived = Math.max(0, Number(message.bytes) || 0);
   const fragments = Math.max(0, Number(message.fragments) || 0);
   updateMseCapturePhase(session, 'capture', { bytesReceived, fragments });
+  return { success: true };
+}
+
+function handleMseCaptureAcceleration(sender: chrome.runtime.MessageSender, message: any): any {
+  const tabId = sender.tab?.id;
+  const session = tabId !== undefined ? mseCaptureByTab.get(tabId) : undefined;
+  if (
+    !session ||
+    session.finalizing ||
+    message.sessionId !== session.sessionId ||
+    !mseCaptureSenderMatches(session, sender)
+  ) {
+    return { success: false, stale: true };
+  }
+
+  const requestedRate = Math.max(1, Number(message.requestedRate) || 1);
+  const effectiveRate = Math.max(0, Number(message.effectiveRate) || 1);
+  const currentPhase = activeDownloads.get(session.downloadKey)?.lastProgress?.phase || 'hook-armed';
+  updateMseCapturePhase(session, currentPhase, { requestedRate, effectiveRate });
   return { success: true };
 }
 
