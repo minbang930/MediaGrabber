@@ -500,7 +500,23 @@ Manual acceptance required:
 - the previously validated transformed-XHR MSE site still exposes an MSE candidate;
 - MSE Download still reloads, captures, accelerates, survives background/occlusion, completes correctly, and cleans up on Cancel.
 
-Status: PR #30 CI passed on Windows/Node 22 (install, full build, CoApp tests, extension package smoke check); manual browser validation pending.
+Status: PR #30 CI passed on Windows/Node 22 (install, full build, CoApp tests, extension package smoke check); ordinary-browsing manual validation passed, MSE regression validation pending.
+
+Manual ordinary-browsing validation result:
+
+- `databento.com` loads normally with the compatibility-test build enabled;
+- Cloudflare human-verification behavior is normal again;
+- YouTube thumbnail loading is normal again.
+
+Interpretation:
+
+- removing static MAIN-world injection from ordinary browsing resolves the reported cross-site regressions on the tested browser;
+- this strongly supports the global MAIN-world instrumentation architecture, rather than a site-specific rule, as the common compatibility cause;
+- exact attribution to one former wrapper remains unnecessary for the fix because the accepted direction is to avoid page-world mutation outside explicit MSE capture.
+
+Remaining acceptance:
+
+- revalidate the previously working transformed-XHR MSE capture workflow end-to-end under the lazy hook architecture.
 
 ## Candidate reconstruction issue
 
