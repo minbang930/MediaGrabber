@@ -14,28 +14,24 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-PR #30 has passed both browser-compatibility and MSE regression acceptance.
+PR #30 (`fix: make MAIN-world MSE hook capture-only`) merged to `main` as `67b8768cd093d32daa5ff5e02f178c02ba204812`.
 
-Validated result:
+The validated browser/MSE architecture is now:
 
-- Cloudflare human-verification behaves normally with MediaGrabber enabled;
-- `databento.com` loads normally;
-- YouTube thumbnails load normally;
-- ordinary browsing no longer receives the MAIN-world MSE hook;
-- blob-backed media is still surfaced as an MSE candidate from the isolated content script;
-- explicit MSE Download dynamically registers the minimal MAIN hook before reload;
-- the previously validated transformed-XHR workflow still passes: candidate visibility, reload/capture, 8× acceleration, background/full-window occlusion, normal output, Cancel cleanup, capture-indicator teardown, and playback-rate restoration.
+- ordinary browsing does not receive the MAIN-world MSE hook;
+- blob-backed media can still surface as an MSE candidate from the isolated content script;
+- explicit MSE Download dynamically registers the minimal MAIN hook for the relevant player/page origins before reload and removes it at teardown;
+- the capture hook does not replace page fetch, XHR, or History methods;
+- Cloudflare human-verification, `databento.com`, and YouTube thumbnails were manually confirmed normal after this change;
+- the transformed-XHR MSE path still passes candidate detection, reload/capture, 8× acceleration, background/full-window occlusion, normal output, Cancel cleanup, capture-indicator teardown, and playback-rate restoration.
 
-The temporary compatibility-test UI/version markers have been removed. Remaining repository work is final CI, PR #30 merge, and verification of latest `main`.
-
-After that, return to the separate direct-download HTTP 404 investigation. Its request-context hypothesis remains unproven.
+The active compatibility problem is again the separate direct-download HTTP 404. Its exact cause remains unproven. Request-context propagation is still only a hypothesis and must be tested narrowly.
 
 ## Next actions
 
-1. Confirm final PR #30 CI after removing diagnostic markers and finalizing architecture/decision docs.
-2. Review final diff, mark PR #30 ready, merge, and verify `main`.
-3. Return to the direct-download HTTP 404 investigation from the new `main`.
-4. Preserve the capture-only MAIN-world design, tabCapture privacy boundary, player semantics, and DRM boundary in future changes.
+1. Investigate the direct-download HTTP 404 from current `main`: inspect candidate provenance, URL freshness/redirect behavior, and whether the detected URL is intermediate/non-download.
+2. Only if needed, determine the minimum non-sensitive request context required; do not copy cookies, authorization tokens, or broad browser headers by default.
+3. Preserve the capture-only MAIN-world design, tabCapture privacy boundary, player semantics, and DRM boundary while making unrelated changes.
 
 ## Start here
 
