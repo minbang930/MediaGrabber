@@ -12,6 +12,7 @@ Last reviewed: 2026-09-24
 - Package and manifest version: 1.1.1.
 - No open PRs existed in the fork at bootstrap time.
 - PR #28 feature merge commit: `3ddeb514c211d869bf197bec3318f668e9f22b3c`.
+- PR #30 feature merge commit: `67b8768cd093d32daa5ff5e02f178c02ba204812`.
 
 ## Implemented runtime
 
@@ -71,7 +72,7 @@ Details and observations are in EXPERIMENTS.md.
 5. The code currently sends no saved request headers in the direct-download call. startDownload() passes URL, directory, and filename to downloads.download; the CoApp supports custom headers, but the extension does not currently provide them on that path. This is a plausible compatibility gap for referer/origin/auth-sensitive URLs, not yet a proven cause of the observed 404.
 6. The previous MSE blob/`All Segments` path is not viable for the tested transformed-XHR player. PR #22 merged an explicit capture session: reload once, spool clear fMP4 appends per SourceBuffer to CoApp temporary files, mux with FFmpeg, and accelerate chronological playback up to 8× during capture. User validation passed end-to-end, including normal playback, accelerated capture, final mux/output, cancellation, rate restoration, and temporary-file cleanup. This is evidence for the tested transport, not a universal MSE support claim.
 7. PR #28 validates a hidden video-only `tabCapture` keep-alive consumed in an offscreen extension document. On the tested Windows/Chromium player, MSE capture continues both in another browser tab and while another maximized application fully occludes the browser, without visible PiP. Success and Cancel both end the browser capture indicator/stream; Cancel also restores the original playback rate.
-8. PR #30's lazy-MSE-hook design manually fixes the reported ordinary-browsing regressions: Cloudflare human-verification, `databento.com` loading, and YouTube thumbnails are normal again. The previously validated transformed-XHR MSE workflow also passed end-to-end under the capture-only hook, including MSE candidate visibility, reload/capture, 8× acceleration, background/full-occlusion keep-alive, successful output, and Cancel teardown/restoration.
+8. PR #30 merged the validated capture-only MAIN-world design. Cloudflare human-verification, `databento.com` loading, and YouTube thumbnails are normal again, while the transformed-XHR MSE workflow still passes end-to-end including candidate visibility, reload/capture, 8× acceleration, background/full-occlusion keep-alive, successful output, and Cancel teardown/restoration.
 9. Some FFmpeg compatibility errors surfaced to users are currently Russian-language strings in background.ts.
 
 ## MSE hook risk area

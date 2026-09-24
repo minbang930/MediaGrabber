@@ -527,7 +527,8 @@ Final result:
 
 - PR #30 passed both ordinary-browsing compatibility and transformed-XHR MSE regression acceptance;
 - the capture-only MAIN-world design is promoted from candidate to validated architecture;
-- temporary compatibility-test build markers were removed before merge preparation.
+- temporary compatibility-test build markers were removed before merge preparation;
+- PR #30 merged to `main` as `67b8768cd093d32daa5ff5e02f178c02ba204812`.
 
 ## Candidate reconstruction issue
 
