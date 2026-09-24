@@ -514,9 +514,20 @@ Interpretation:
 - this strongly supports the global MAIN-world instrumentation architecture, rather than a site-specific rule, as the common compatibility cause;
 - exact attribution to one former wrapper remains unnecessary for the fix because the accepted direction is to avoid page-world mutation outside explicit MSE capture.
 
-Remaining acceptance:
+MSE regression validation result:
 
-- revalidate the previously working transformed-XHR MSE capture workflow end-to-end under the lazy hook architecture.
+- the previously validated transformed-XHR site still exposes the MSE candidate;
+- Download still registers the capture path, reloads, and captures successfully;
+- 8× chronological acceleration still works;
+- capture continues in another tab and while another maximized application fully covers the browser;
+- final output completes normally;
+- Cancel still stops capture, ends the browser capture indicator, restores playback rate, and leaves the player usable.
+
+Final result:
+
+- PR #30 passed both ordinary-browsing compatibility and transformed-XHR MSE regression acceptance;
+- the capture-only MAIN-world design is promoted from candidate to validated architecture;
+- temporary compatibility-test build markers were removed before merge preparation.
 
 ## Candidate reconstruction issue
 
