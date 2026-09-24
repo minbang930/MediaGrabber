@@ -14,36 +14,28 @@ Last updated: 2026-09-24
 
 ## Current focus
 
-The direct-download HTTP 404 is temporarily deprioritized because a broader browser-compatibility regression is now confirmed on current `main`.
+PR #30 has passed both browser-compatibility and MSE regression acceptance.
 
-User-reported A/B evidence:
+Validated result:
 
-- Cloudflare human-verification can remain stuck/loading with MediaGrabber enabled;
-- `databento.com` can fail to load with the extension enabled;
-- disabling MediaGrabber restores normal access;
-- YouTube thumbnails can initially be missing and later reappear.
+- Cloudflare human-verification behaves normally with MediaGrabber enabled;
+- `databento.com` loads normally;
+- YouTube thumbnails load normally;
+- ordinary browsing no longer receives the MAIN-world MSE hook;
+- blob-backed media is still surfaced as an MSE candidate from the isolated content script;
+- explicit MSE Download dynamically registers the minimal MAIN hook before reload;
+- the previously validated transformed-XHR workflow still passes: candidate visibility, reload/capture, 8× acceleration, background/full-window occlusion, normal output, Cancel cleanup, capture-indicator teardown, and playback-rate restoration.
 
-Current `main` injects `mse-inject.js` into every URL/frame at `document_start` in MAIN world, where it replaces multiple page-visible native APIs. This violates the playback/browser-preservation goal beyond media sites.
+The temporary compatibility-test UI/version markers have been removed. Remaining repository work is final CI, PR #30 merge, and verification of latest `main`.
 
-Active branch: `fix/lazy-mse-main-hook`.
-
-Candidate implementation:
-
-- remove static MAIN-world MSE injection;
-- detect `blob:` video as an MSE candidate from the isolated content script;
-- dynamically register the MAIN MSE hook only when the user starts an MSE capture, scoped to the relevant HTTP(S) player/page origins and future reload documents;
-- unregister the hook at capture teardown;
-- remove History/fetch/XHR wrappers from the MSE hook;
-- replace same-document History wrapping with isolated-world Navigation API observation;
-- preserve HTTP redirect relay learning through `webRequest.onBeforeRedirect`.
+After that, return to the separate direct-download HTTP 404 investigation. Its request-context hypothesis remains unproven.
 
 ## Next actions
 
-1. PR #30 CI passed on Windows/Node 22: install, full build, CoApp tests, and extension package smoke check.
-2. Ordinary-browsing validation passed: Cloudflare challenge behavior, `databento.com`, and YouTube thumbnails are normal again with the PR #30 compatibility build.
-3. Revalidate the previously working transformed-XHR MSE site: candidate visibility, Download/reload, 8× append capture, background/occlusion keep-alive, successful output, and Cancel teardown.
-4. If the MSE regression test passes, remove the temporary `[compat test]` / version marker, update architecture/decision docs, run final CI, and merge.
-5. Only after this compatibility issue is closed, return to the separate direct-download HTTP 404.
+1. Confirm final PR #30 CI after removing diagnostic markers and finalizing architecture/decision docs.
+2. Review final diff, mark PR #30 ready, merge, and verify `main`.
+3. Return to the direct-download HTTP 404 investigation from the new `main`.
+4. Preserve the capture-only MAIN-world design, tabCapture privacy boundary, player semantics, and DRM boundary in future changes.
 
 ## Start here
 
