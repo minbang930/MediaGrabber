@@ -71,21 +71,14 @@ Details and observations are in EXPERIMENTS.md.
 5. The code currently sends no saved request headers in the direct-download call. startDownload() passes URL, directory, and filename to downloads.download; the CoApp supports custom headers, but the extension does not currently provide them on that path. This is a plausible compatibility gap for referer/origin/auth-sensitive URLs, not yet a proven cause of the observed 404.
 6. The previous MSE blob/`All Segments` path is not viable for the tested transformed-XHR player. PR #22 merged an explicit capture session: reload once, spool clear fMP4 appends per SourceBuffer to CoApp temporary files, mux with FFmpeg, and accelerate chronological playback up to 8× during capture. User validation passed end-to-end, including normal playback, accelerated capture, final mux/output, cancellation, rate restoration, and temporary-file cleanup. This is evidence for the tested transport, not a universal MSE support claim.
 7. PR #28 validates a hidden video-only `tabCapture` keep-alive consumed in an offscreen extension document. On the tested Windows/Chromium player, MSE capture continues both in another browser tab and while another maximized application fully occludes the browser, without visible PiP. Success and Cancel both end the browser capture indicator/stream; Cancel also restores the original playback rate.
-8. Some FFmpeg compatibility errors surfaced to users are currently Russian-language strings in background.ts.
+8. PR #30's lazy-MSE-hook design manually fixes the reported ordinary-browsing regressions: Cloudflare human-verification, `databento.com` loading, and YouTube thumbnails are normal again. The previously validated transformed-XHR MSE workflow also passed end-to-end under the capture-only hook, including MSE candidate visibility, reload/capture, 8× acceleration, background/full-occlusion keep-alive, successful output, and Cancel teardown/restoration.
+9. Some FFmpeg compatibility errors surfaced to users are currently Russian-language strings in background.ts.
 
 ## MSE hook risk area
 
-extension/src/mse-inject.ts currently modifies several page-global APIs, including:
+PR #30 removes static MAIN-world MSE injection from ordinary browsing. Blob-backed media can be surfaced from the isolated content script, while the MAIN-world hook is dynamically registered only for explicit MSE capture and removed at teardown.
 
-- history.pushState and replaceState;
-- XMLHttpRequest.prototype.open;
-- window.fetch;
-- URL.createObjectURL;
-- MediaSource.prototype.addSourceBuffer;
-- SourceBuffer.prototype.appendBuffer;
-- MediaSource.prototype.duration.
-
-The previous XHR constructor and event-property wrapping was too invasive for at least one tested player. PR #3 removed those mechanisms while retaining minimal observation, and user validation confirmed playback recovery. The later 14-entry popup problem was separately traced to DOM-source noise and then to an image-only HLS playlist hiding an MSE candidate.
+The capture-only hook no longer replaces `window.fetch`, `XMLHttpRequest.prototype.open`, or page History methods. This is now the validated compatibility direction because it fixed Cloudflare/Databento/YouTube browsing regressions without breaking the tested transformed-XHR MSE download workflow.
 
 ## Documentation state
 

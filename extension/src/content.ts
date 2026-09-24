@@ -48,7 +48,15 @@ class MediaDetector {
 
   private setupNavigationListener(): void {
     const checkForUrlChange = () => this.handleNavigation(window.location.href);
+    const navigationApi = (window as any).navigation;
 
+    // Chrome 102+ exposes same-document History API changes through Navigation.
+    // Listen from the isolated world instead of replacing page-owned history methods.
+    if (navigationApi?.addEventListener) {
+      navigationApi.addEventListener('currententrychange', checkForUrlChange);
+    }
+
+    // Keep legacy traversal/hash fallbacks. handleNavigation() de-duplicates them.
     window.addEventListener('popstate', checkForUrlChange);
     window.addEventListener('hashchange', checkForUrlChange);
   }
@@ -64,6 +72,14 @@ class MediaDetector {
     this.lastMetadataKey = '';
     this.mseState = { totalBytes: 0, segmentUrls: [] };
     this.sendNavigation(pageUrl, this.pageGeneration);
+    try {
+      window.postMessage({
+        source: 'MediaGrabber-Content',
+        type: 'page-navigation',
+        pageUrl,
+        generation: this.pageGeneration
+      }, '*');
+    } catch {}
     this.scheduleMetadataSend();
   }
 
@@ -539,7 +555,7 @@ class MediaDetector {
   private handleMediaElement(el: HTMLVideoElement): void {
     const src = el.currentSrc || el.src;
     if (src) {
-      this.handleMediaUrl(src);
+      this.handleObservedMediaElementUrl(src);
     }
 
     // Also check for source elements inside
@@ -552,8 +568,8 @@ class MediaDetector {
 
     // Listen for source changes
     el.addEventListener('loadedmetadata', () => {
-      const currentSrc = el.currentSrc;
-      if (currentSrc) this.handleMediaUrl(currentSrc);
+      const currentSrc = el.currentSrc || el.src;
+      if (currentSrc) this.handleObservedMediaElementUrl(currentSrc);
       this.sendPageMetadata();
     });
   }
@@ -585,6 +601,45 @@ class MediaDetector {
     } catch {
       // Extension context invalidated (extension was reloaded)
     }
+  }
+
+  private handleObservedMediaElementUrl(url: string): void {
+    if (this.isBlobMediaUrl(url)) {
+      this.handleMseBlobUrl(url);
+      return;
+    }
+    this.handleMediaUrl(url);
+  }
+
+  private isBlobMediaUrl(url: string): boolean {
+    try {
+      return new URL(url, window.location.href).protocol === 'blob:';
+    } catch {
+      return false;
+    }
+  }
+
+  private handleMseBlobUrl(url: string): void {
+    let normalizedUrl: string;
+    try {
+      const parsed = new URL(url, window.location.href);
+      if (parsed.protocol !== 'blob:') return;
+      normalizedUrl = parsed.href;
+    } catch {
+      return;
+    }
+
+    if (this.mediaUrls.has(normalizedUrl)) return;
+    this.mediaUrls.add(normalizedUrl);
+
+    const media: DetectedMedia = {
+      type: 'mse',
+      url: normalizedUrl,
+      qualities: [],
+      pageUrl: window.location.href,
+      generation: this.pageGeneration
+    };
+    this.sendToBackground(media);
   }
 
   /**

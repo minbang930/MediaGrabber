@@ -5,7 +5,8 @@ This document describes the current MediaGrabber implementation in this reposito
 ## Runtime overview
 
 Browser page and player
-→ isolated content script and MAIN-world MSE instrumentation
+→ isolated content script
+→ optional capture-only MAIN-world MSE instrumentation
 → Manifest V3 background service worker
 → native messaging bridge
 → Node CoApp
@@ -46,19 +47,21 @@ For the new MSE capture path, it also performs the isolated-world bridge between
 
 #### MAIN-world MSE instrumentation
 
-extension/src/mse-inject.ts runs at document_start in the page's MAIN world so it can observe APIs unavailable from the isolated extension world.
+Ordinary browsing does not statically inject `mse-inject.ts` into the page MAIN world.
 
-It currently instruments:
+The isolated content script can recognize blob-backed media elements as MSE candidates without replacing page-owned APIs. When the user explicitly starts an MSE download, the background service worker dynamically registers `mse-inject.js` for the relevant HTTP(S) player/page origins at `document_start`, reloads the page, and removes the temporary registration when capture succeeds, is cancelled, or fails.
 
-- history navigation;
-- window.fetch;
-- XMLHttpRequest.prototype.open, using a normal loadend event listener for relay observation;
-- URL.createObjectURL;
-- MediaSource and SourceBuffer APIs.
+During that explicit capture window, the MAIN-world hook instruments only the APIs needed by the validated append-capture workflow:
 
-It reports MSE state and original-to-relay URL mappings to content.ts using window.postMessage. On the append-capture branch, an explicit capture session additionally copies already-clear SourceBuffer append fragments only after the native append call has been forwarded, splits them into bounded chunks, and stops on EME/CENC indicators. During an active capture it may also request up to 8× chronological playback on the uniquely identified captured media element; no automatic seek is used, and the original playback rate is restored when capture ends.
+- `URL.createObjectURL` for MediaSource/blob association;
+- `MediaSource.prototype.addSourceBuffer`;
+- `SourceBuffer.prototype.appendBuffer`;
+- the `MediaSource.prototype.duration` setter;
+- capture-scoped media events needed for completion, DRM guards, and playback-rate restoration.
 
-This layer is currently the highest compatibility-risk component because it mutates page-global APIs. The current compatibility patch removes XMLHttpRequest constructor replacement and per-instance event-property redefinition, while retaining a minimal prototype.open observer. The project requirement is to retain observability while preserving native page semantics.
+It does not replace `window.fetch`, `XMLHttpRequest.prototype.open`, or History methods. Same-document navigation is observed from the isolated content script through the Navigation API when available, with popstate/hashchange fallbacks. Media redirect learning needed by HLS relay compatibility is handled in the background through `webRequest.onBeforeRedirect`.
+
+This keeps page-global mutation out of unrelated browsing while retaining the explicit post-transform SourceBuffer capture path.
 
 #### MSE background keep-alive
 

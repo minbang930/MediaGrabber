@@ -204,9 +204,81 @@ interface MseCaptureSession {
   finalizing: boolean;
   firstChunkSeen: boolean;
   keepAliveMode?: 'tab-capture';
+  hookScriptId?: string;
 }
 
 const mseCaptureByTab = new Map<number, MseCaptureSession>();
+
+const MSE_CAPTURE_HOOK_PREFIX = 'mediagrabber-mse-capture-';
+
+function getMseHookMatchPattern(urlValue?: string | null): string | undefined {
+  if (!urlValue) return undefined;
+  try {
+    const url = new URL(urlValue);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+    return `${url.protocol}//${url.hostname}/*`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function registerMseCaptureHook(tabId: number, video: VideoInfo): Promise<string> {
+  const scripting = (chrome as any).scripting;
+  if (!scripting?.registerContentScripts) {
+    throw new Error('MSE capture requires the chrome.scripting API.');
+  }
+
+  const stored = video as VideoInfo & { pageUrl?: string };
+  const patterns = Array.from(new Set([
+    getMseHookMatchPattern(video.sourceFrameUrl),
+    getMseHookMatchPattern(stored.pageUrl),
+    getMseHookMatchPattern(currentPageUrlByTab.get(tabId))
+  ].filter((value): value is string => Boolean(value))));
+
+  if (patterns.length === 0) {
+    throw new Error('MSE capture could not determine an HTTP(S) player origin.');
+  }
+
+  const scriptId = `${MSE_CAPTURE_HOOK_PREFIX}${tabId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  await scripting.registerContentScripts([{
+    id: scriptId,
+    js: ['dist/mse-inject.js'],
+    matches: patterns,
+    allFrames: true,
+    matchOriginAsFallback: true,
+    runAt: 'document_start',
+    world: 'MAIN',
+    persistAcrossSessions: false
+  }]);
+  return scriptId;
+}
+
+async function unregisterMseCaptureHook(scriptId?: string): Promise<void> {
+  if (!scriptId) return;
+  const scripting = (chrome as any).scripting;
+  if (!scripting?.unregisterContentScripts) return;
+  try {
+    await scripting.unregisterContentScripts({ ids: [scriptId] });
+  } catch {
+    // Best-effort cleanup: the registration may already be gone after browser shutdown/reload.
+  }
+}
+
+async function cleanupStaleMseCaptureHooks(): Promise<void> {
+  const scripting = (chrome as any).scripting;
+  if (!scripting?.getRegisteredContentScripts || !scripting?.unregisterContentScripts) return;
+  try {
+    const scripts = await scripting.getRegisteredContentScripts();
+    const ids = scripts
+      .map((script: any) => String(script?.id || ''))
+      .filter((id: string) => id.startsWith(MSE_CAPTURE_HOOK_PREFIX));
+    if (ids.length > 0) {
+      await scripting.unregisterContentScripts({ ids });
+    }
+  } catch {
+    // Cleanup is opportunistic; active sessions are runtime-memory scoped already.
+  }
+}
 
 const MSE_OFFSCREEN_DOCUMENT_PATH = 'src/offscreen/offscreen.html';
 let mseOffscreenCreating: Promise<void> | null = null;
@@ -376,10 +448,12 @@ nativeClient.listen({
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[MediaGrabber] Extension installed');
+  void cleanupStaleMseCaptureHooks();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   console.log('[MediaGrabber] Service worker starting');
+  void cleanupStaleMseCaptureHooks();
 });
 
 // --- Media detection via webRequest (works in MV3 service worker) ---
@@ -398,6 +472,21 @@ chrome.webRequest.onBeforeRequest.addListener(
     if (!isMediaUrl(parsedUrl)) return;
 
     void handleInterceptedMedia(details.tabId, details.url, undefined, getRequestReferer(details.initiator));
+  },
+  { urls: ['<all_urls>'] }
+);
+
+chrome.webRequest.onBeforeRedirect.addListener(
+  (details) => {
+    if (details.tabId < 0 || !details.redirectUrl) return;
+    let path: string;
+    try {
+      path = new URL(details.url).pathname.toLowerCase();
+    } catch {
+      return;
+    }
+    if (!/\.(?:m3u8|mpd|ts|m4s|mp4|webm)$/.test(path)) return;
+    learnRelayCodec(details.tabId, details.url, details.redirectUrl);
   },
   { urls: ['<all_urls>'] }
 );
@@ -1106,15 +1195,23 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
     const sessionId = `mse_${tabId}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     const outputPath = joinOutputPath(directory, outFilename);
 
+    let hookScriptId: string | undefined;
     let keepAliveStarted = false;
+    let nativeCaptureStarted = false;
     try {
+      hookScriptId = await registerMseCaptureHook(tabId, video);
       await startMseTabCaptureKeepAlive(tabId);
       keepAliveStarted = true;
       await nativeClient.mseCaptureStart(sessionId);
+      nativeCaptureStarted = true;
     } catch (error) {
+      if (nativeCaptureStarted) {
+        try { await nativeClient.mseCaptureAbort(sessionId); } catch {}
+      }
       if (keepAliveStarted) {
         await stopMseTabCaptureKeepAlive(tabId);
       }
+      await unregisterMseCaptureHook(hookScriptId);
       throw error;
     }
 
@@ -1128,7 +1225,8 @@ async function startDownload(video: VideoInfo, filename?: string, tabId?: number
       outputPath,
       finalizing: false,
       firstChunkSeen: false,
-      keepAliveMode: 'tab-capture'
+      keepAliveMode: 'tab-capture',
+      hookScriptId
     };
     mseCaptureByTab.set(tabId, session);
 
@@ -1585,6 +1683,7 @@ async function failMseCapture(session: MseCaptureSession, error: string, notifyP
   sendMseCaptureStop(session);
   mseCaptureByTab.delete(session.tabId);
   await stopMseTabCaptureKeepAlive(session.tabId);
+  await unregisterMseCaptureHook(session.hookScriptId);
   try {
     await nativeClient.mseCaptureAbort(session.sessionId);
   } catch {
@@ -1617,6 +1716,7 @@ async function finalizeMseCapture(session: MseCaptureSession): Promise<void> {
   try {
     updateMseCapturePhase(session, 'finalizing');
     await stopMseTabCaptureKeepAlive(session.tabId);
+    await unregisterMseCaptureHook(session.hookScriptId);
 
     const captured = await nativeClient.mseCaptureFinish(session.sessionId);
     const args = buildMseMuxArgs(captured.tracks, session.outputPath);
