@@ -29,7 +29,7 @@ Roadmap items describe intended work, not current implementation. See CURRENT_ST
 - Current manual compatibility observations captured in EXPERIMENTS.md.
 - PR #22 merged the validated transformed-XHR MSE append-capture/mux workflow, 8× chronological acceleration, cancellation cleanup, deterministic MSE fragment/session tests, and Windows/Node 22 PR/main CI.
 - PR #28 merged hidden video-only `tabCapture` + offscreen keep-alive so explicit MSE capture continues across background tabs and full native-window occlusion without visible PiP; completion/Cancel teardown passed.
-- PR #30 validated capture-only MAIN-world MSE instrumentation: ordinary browsing no longer receives page-world hooks, Cloudflare/Databento/YouTube regressions are fixed, and the transformed-XHR MSE workflow still passes end-to-end.
+- PR #30 merged capture-only MAIN-world MSE instrumentation: ordinary browsing no longer receives page-world hooks, Cloudflare/Databento/YouTube regressions are fixed, and the transformed-XHR MSE workflow still passes end-to-end.
 
 ## Deferred / not a goal
 
