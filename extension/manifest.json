@@ -54,6 +54,5 @@
     "32": "public/icons/icon-32.png",
     "48": "public/icons/icon-48.png",
     "128": "public/icons/icon-128.png"
-  },
-  "version_name": "1.1.1-lazy-mse-hook-test"
+  }
 }
