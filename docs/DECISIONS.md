@@ -114,6 +114,28 @@ Privacy and compatibility constraints:
 
 Consequence: visible PiP is no longer required for the validated Windows/Chromium MSE background-capture workflow. Real-video PiP remains historical fallback evidence, not the preferred architecture.
 
+## 2026-09-24 — Keep MAIN-world instrumentation capture-only
+
+Decision: MediaGrabber must not statically inject page-world MSE instrumentation during ordinary browsing. MAIN-world instrumentation is registered only for an explicit user-triggered MSE capture, scoped to the relevant player/page HTTP(S) origins and removed at capture teardown.
+
+Evidence:
+
+- with the previous global `<all_urls>`, all-frame, `document_start` MAIN hook enabled, Cloudflare human-verification could stall, `databento.com` could fail to load, and YouTube thumbnails could be delayed;
+- disabling MediaGrabber restored those sites;
+- PR #30's compatibility build removed ordinary-browsing MAIN injection, after which all three reported browsing regressions were manually confirmed normal;
+- the previously validated transformed-XHR MSE workflow also passed end-to-end under the lazy hook design, including candidate visibility, reload/capture, 8× acceleration, background/full-occlusion keep-alive, successful output, and Cancel cleanup/restoration.
+
+Design constraints:
+
+- ordinary browsing should leave page-owned fetch, XHR, History, MediaSource, and SourceBuffer semantics untouched by MediaGrabber;
+- detect blob-backed MSE candidates from the isolated content script where possible;
+- only explicit MSE Download may register the capture hook;
+- the capture hook must avoid nonessential fetch/XHR/History monkey-patches;
+- unregister the temporary hook on success, cancellation, error, and clean stale registrations on extension startup/install;
+- preserve DRM/EME guards and the existing privacy boundaries.
+
+Consequence: page-world observation is treated as a narrowly scoped capture capability, not a general always-on detection mechanism.
+
 ## Inherited architecture decisions
 
 The current codebase already embodies these upstream choices:
